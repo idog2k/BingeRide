@@ -52,6 +52,14 @@ public sealed class AppSettings
     public static string DefaultWorkoutsFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MyWahoo", "Workouts");
 
+    /// <summary>Where finished rides are saved as .fit files (with a .json summary each).</summary>
+    public string? RidesFolder { get; set; }
+
+    [JsonIgnore]
+    public string ResolvedRidesFolder => string.IsNullOrWhiteSpace(RidesFolder)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MyWahoo", "Rides")
+        : RidesFolder;
+
     public static Dictionary<ClickButtons, ClickAction> DefaultClickMapping() => new()
     {
         [ClickButtons.Plus] = ClickAction.Up,

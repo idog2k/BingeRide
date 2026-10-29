@@ -8,7 +8,8 @@ namespace MyWahoo.Core.Session;
 public enum RideMode { Erg, Slope, Free, Workout }
 
 /// <summary>
-/// The ride's brain: modes, gears, ERG/grade targets, workout progression, live stats.
+/// The ride's brain: modes, gears, ERG/grade targets, workout progression, live stats, and the ride
+/// recorder (totals only accumulate between <see cref="StartRide"/> and <see cref="FinishRide"/>).
 /// Everything except <see cref="OnTrainerData"/> must be called from the UI thread;
 /// <see cref="Tick"/> is expected about 4×/s.
 /// </summary>
@@ -28,6 +29,8 @@ public sealed class RideController
     private double _heartBeatsWeighted, _heartSeconds;
     private DateTimeOffset? _lastTick;
     private DateTimeOffset _lastPedalling;
+    private DateTimeOffset _nextSampleAt;
+    private bool _timerRunning;
     private ITrainer? _trainer;
 
     public RideController(AppSettings settings)
@@ -51,8 +54,20 @@ public sealed class RideController
 
     public WorkoutPlayer? Player { get; private set; }
     public double WorkoutIntensityPct { get; private set; } = 100;
-    public bool IsWorkoutPaused { get; private set; }
     public bool IsAutoPaused { get; private set; }
+
+    public RideState State { get; private set; } = RideState.Idle;
+    public bool IsPaused => State == RideState.Paused;
+    public bool IsRideActive => State is RideState.Recording or RideState.Paused;
+
+    /// <summary>The current (or just finished) ride.</summary>
+    public RideRecording? Recording { get; private set; }
+
+    /// <summary>Running time of the current ride (what the REC timer shows).</summary>
+    public double RideTimerSeconds => State == RideState.Idle ? 0 : Recording?.TimerSeconds(_lastTick) ?? 0;
+
+    /// <summary>Raised when a ride is finished, with its samples, for saving.</summary>
+    public event EventHandler<RideRecording>? RideFinished;
 
     public double PowerW { get; private set; }
     public double CadenceRpm { get; private set; }
@@ -122,7 +137,6 @@ public sealed class RideController
         {
             ManualMode = mode;
             Player = null;
-            IsWorkoutPaused = false;
         }
         Mode = mode;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -133,8 +147,11 @@ public sealed class RideController
     {
         Player = new WorkoutPlayer(workout);
         WorkoutIntensityPct = 100;
-        IsWorkoutPaused = false;
         Mode = RideMode.Workout;
+        // A workout is always recorded: start the ride (or resume it) if needed.
+        if (!IsRideActive) StartRide();
+        else if (IsPaused) TogglePause();
+        Recording!.WorkoutName ??= workout.Name;
         Apply(Player.Start());
         Changed?.Invoke(this, EventArgs.Empty);
         PushTarget();
@@ -142,11 +159,63 @@ public sealed class RideController
 
     public void StopWorkout() => SetMode(ManualMode);
 
+    /// <summary>Starts recording a ride: totals reset and from now on accumulate, 1 Hz samples are kept for the activity file.</summary>
+    public void StartRide(DateTimeOffset? at = null)
+    {
+        if (IsRideActive) return;
+        var now = at ?? _lastTick ?? DateTimeOffset.UtcNow;
+        DistanceM = RideSeconds = WorkKj = _heartBeatsWeighted = _heartSeconds = 0;
+        MaxHeartRate = null;
+        Recording = new RideRecording { StartTime = now, Ftp = Settings.Ftp, WorkoutName = Player?.Workout.Name };
+        State = RideState.Recording;
+        _lastPedalling = now; // grace period before auto-pause
+        _timerRunning = false;
+        SetTimer(true, now);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Start ↔ pause ↔ resume (the Space key / a Click button).</summary>
     public void TogglePause()
     {
-        if (Mode != RideMode.Workout || Player is null) return;
-        IsWorkoutPaused = !IsWorkoutPaused;
+        var now = _lastTick ?? DateTimeOffset.UtcNow;
+        switch (State)
+        {
+            case RideState.Recording:
+                State = RideState.Paused;
+                SetTimer(false, now);
+                break;
+            case RideState.Paused:
+                State = RideState.Recording;
+                _lastPedalling = now;
+                SetTimer(true, now);
+                break;
+            default:
+                StartRide(now);
+                break;
+        }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Stops recording (and any workout) and raises <see cref="RideFinished"/>.</summary>
+    public RideRecording? FinishRide()
+    {
+        if (!IsRideActive || Recording is null) return null;
+        var now = _lastTick ?? DateTimeOffset.UtcNow;
+        SetTimer(false, now);
+        Recording.EndTime = now;
+        State = RideState.Finished;
+        if (Mode == RideMode.Workout) StopWorkout();
+        Changed?.Invoke(this, EventArgs.Empty);
+        RideFinished?.Invoke(this, Recording);
+        return Recording;
+    }
+
+    private void SetTimer(bool running, DateTimeOffset now)
+    {
+        if (running == _timerRunning || Recording is null) return;
+        _timerRunning = running;
+        Recording.TimerEvents.Add(new TimerEvent(now, running));
+        if (running) _nextSampleAt = now;
     }
 
     public void SkipStep()
@@ -273,26 +342,38 @@ public sealed class RideController
         // Judge pedalling on the latest readings, not the 3 s average, so auto-pause reacts promptly.
         var pedalling = _instantPower > 5 || CadenceRpm > 5;
         if (pedalling) _lastPedalling = now;
-        IsAutoPaused = Settings.AutoPause && Mode == RideMode.Workout && !pedalling && now - _lastPedalling >= AutoPauseAfter;
+        IsAutoPaused = Settings.AutoPause && State == RideState.Recording && !pedalling && now - _lastPedalling >= AutoPauseAfter;
+        var running = State == RideState.Recording && !IsAutoPaused;
+        SetTimer(running, now);
 
         var targetSpeed = RiderPhysics.SteadySpeed(PowerW, EffectiveGrade, Settings.RiderKg + Settings.BikeKg);
         _speedMps = RiderPhysics.Approach(_speedMps, targetSpeed, dt);
         var distance = _speedMps * dt;
-        DistanceM += distance;
-        if (pedalling)
+        if (running)
         {
-            RideSeconds += dt;
-            WorkKj += PowerW * dt / 1000;
-            if (HeartRate is { } bpm)
+            DistanceM += distance;
+            if (pedalling)
             {
-                _heartBeatsWeighted += bpm * dt;
-                _heartSeconds += dt;
+                RideSeconds += dt;
+                WorkKj += PowerW * dt / 1000;
+                if (HeartRate is { } bpm)
+                {
+                    _heartBeatsWeighted += bpm * dt;
+                    _heartSeconds += dt;
+                }
             }
-        }
-        if (HeartRate is { } current && current > (MaxHeartRate ?? 0)) MaxHeartRate = current;
+            if (HeartRate is { } current && current > (MaxHeartRate ?? 0)) MaxHeartRate = current;
 
-        if (Mode == RideMode.Workout && Player is { IsFinished: false } player && !IsWorkoutPaused && !IsAutoPaused)
-            Apply(player.Advance(dt, distance));
+            // Exactly one sample per second of running time, stamped on the second grid.
+            while (now >= _nextSampleAt)
+            {
+                Recording!.Samples.Add(new RideSample(_nextSampleAt, _instantPower, (int)Math.Round(CadenceRpm), HeartRate, _speedMps, DistanceM));
+                _nextSampleAt += TimeSpan.FromSeconds(1);
+            }
+
+            if (Mode == RideMode.Workout && Player is { IsFinished: false } player)
+                Apply(player.Advance(dt, distance));
+        }
 
         if (Cue is not null && now >= _cueUntil) Cue = null;
         PushTarget();

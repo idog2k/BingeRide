@@ -127,6 +127,7 @@ public class RideHeartRateTests
     public void Average_and_max_while_riding()
     {
         var c = new RideController(new AppSettings());
+        c.StartRide(T0);
         for (var i = 0; i <= 120; i++)
         {
             var now = T0.AddSeconds(i * 0.5);

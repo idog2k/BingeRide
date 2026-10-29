@@ -25,6 +25,14 @@ public sealed partial class ClickMappingItem(ClickButtons button, string label, 
     partial void OnActionChanged(ClickAction value) => onChanged(Button, value);
 }
 
+/// <summary>A nearby device in the Devices list, with whether we're already connected to it.</summary>
+public sealed record DeviceRow(DiscoveredDevice Device, bool IsConnected)
+{
+    public string Name => Device.Name;
+    public string Detail => $"{Device.Role switch { DeviceRole.HeartRate => "Heart rate", var r => r.ToString() }} · {Device.Rssi} dBm";
+    public bool CanConnect => !IsConnected && Device.CanConnect;
+}
+
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IPlatformServices _platform;
@@ -33,7 +41,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly DispatcherTimer _saveSettings;
     private IBleAdapter? _adapter;
     private DeviceManager? _devices;
-    private SimulatedTrainer? _demo;
+    private ITrainer? _manualTrainer; // demo trainer (or a test double) instead of Bluetooth
     private ITrainer? _attached;
 
     public MainViewModel(IPlatformServices platform, AppSettings settings, string? settingsPath = null)
@@ -46,6 +54,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Library = new WorkoutLibrary(settings.ResolvedWorkoutsFolder);
         Library.Changed += (_, _) => Dispatcher.UIThread.Post(RefreshLibrary);
         Library.WorkoutArrived += (_, e) => Dispatcher.UIThread.Post(() => AnnounceWorkout(e, "New workout"));
+        Rides = new RideHistory(settings.ResolvedRidesFolder);
+        Ride.RideFinished += (_, ride) => SaveRide(ride);
 
         ClickMappings = new ObservableCollection<ClickMappingItem>(
             new (ClickButtons Button, string Label)[]
@@ -69,9 +79,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AppSettings Settings { get; }
     public RideController Ride { get; }
     public WorkoutLibrary Library { get; }
+    public RideHistory Rides { get; }
+    public ObservableCollection<RideEntry> RideEntries { get; } = [];
 
     public ObservableCollection<LibraryEntry> Workouts { get; } = [];
-    public ObservableCollection<DiscoveredDevice> Devices { get; } = [];
+    public ObservableCollection<DeviceRow> Devices { get; } = [];
     public ObservableCollection<string> LogLines { get; } = [];
     public ObservableCollection<ClickMappingItem> ClickMappings { get; }
 
@@ -135,6 +147,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private bool _clickConnected;
     [ObservableProperty] private string _heartRateStatus = "No heart rate";
     [ObservableProperty] private bool _heartRateConnected;
+    [ObservableProperty] private IBrush _trainerChipBrush = Brushes.Gray;
+    [ObservableProperty] private string _trainerChipText = "No trainer";
+    [ObservableProperty] private IBrush _clickChipBrush = Brushes.Gray;
+    [ObservableProperty] private string _clickChipText = "No Click";
+
+    // ---- ride recording ----------------------------------------------------------------------
+    [ObservableProperty] private bool _isRecording;
+    [ObservableProperty] private bool _isRidePaused;
+    [ObservableProperty] private bool _isRideActive;
+    [ObservableProperty] private string _rideTimeText = "0:00";
     [ObservableProperty] private bool _bluetoothAvailable;
 
     // ---- overlay -----------------------------------------------------------------------------
@@ -154,6 +176,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public double Ftp => Settings.Ftp;
     public int Gear => Ride.Gear;
 
+    public bool IsRideIdle => !IsRideActive;
+    partial void OnIsRideActiveChanged(bool value) => OnPropertyChanged(nameof(IsRideIdle));
     partial void OnCueTextChanged(string? value) => OnPropertyChanged(nameof(HasCue));
     partial void OnNoticeChanged(string? value) => OnPropertyChanged(nameof(HasNotice));
     partial void OnActiveWorkoutChanged(Workout? value) => OnPropertyChanged(nameof(HasActiveWorkout));
@@ -225,6 +249,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             AddLog("Bluetooth LE is not available; use the demo trainer to try the app.");
         }
         ClickThrough = Settings.OverlayClickThrough;
+        RefreshRides();
         SyncDevices();
         _tick.Start();
     }
@@ -239,6 +264,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void Refresh()
     {
         var r = Ride;
+        IsRecording = r.State == RideState.Recording;
+        IsRidePaused = r.IsPaused;
+        IsRideActive = r.IsRideActive;
+        RideTimeText = Fmt.Duration(r.RideTimerSeconds);
         PowerText = $"{r.PowerW:0}";
         CadenceText = $"{r.CadenceRpm:0}";
         HeartRateText = r.HeartRate is { } hr ? $"{hr}" : "—";
@@ -278,7 +307,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             WorkoutProgress = player.Progress;
             IntensityText = $"{r.WorkoutIntensityPct:0}%";
-            PauseLabel = r.IsWorkoutPaused ? "Resume" : "Pause";
+            PauseLabel = r.IsPaused ? "Resume" : "Pause";
             WorkoutTimeText = player.Workout.HasDistanceSteps
                 ? $"{Fmt.Duration(player.ElapsedSec)} · {Fmt.Distance(r.DistanceM)}"
                 : $"{Fmt.Duration(player.ElapsedSec)} / {Fmt.Duration(player.Workout.TotalDurationSec)}";
@@ -298,7 +327,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 StepRemainingText = "0:00";
                 NextStepText = "Shift freely, or pick another workout";
             }
-            var status = r.IsWorkoutPaused ? "PAUSED · " : r.IsAutoPaused ? "Pedal to resume · " : "";
+            var status = r.IsPaused ? "PAUSED · " : r.IsAutoPaused ? "Pedal to resume · " : "";
             CompactLine = status + StepTitle;
             ModeDetail = kind == StepKind.Erg
                 ? "Trainer holds the target. Click +/− nudges the intensity."
@@ -307,7 +336,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else
         {
             WorkoutProgress = -1;
-            CompactLine = $"{DistanceText} · {ElapsedText} · avg {AvgPowerText} W";
+            CompactLine = r.IsRideActive
+                ? $"{(r.IsPaused ? "PAUSED · " : r.IsAutoPaused ? "Pedal to resume · " : "")}{DistanceText} · {ElapsedText} · avg {AvgPowerText} W"
+                : "Not recording: press ▶ to start a ride";
             ModeDetail = r.Mode switch
             {
                 RideMode.Erg => "Trainer holds your power. Click +/− changes watts.",
@@ -343,6 +374,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand] private void SkipStep() { Ride.SkipStep(); Refresh(); }
     [RelayCommand] private void PreviousStep() { Ride.PreviousStep(); Refresh(); }
     [RelayCommand] private void StopWorkout() { Ride.StopWorkout(); Refresh(); }
+    [RelayCommand] private void StartRide() { Ride.StartRide(); Refresh(); }
+    [RelayCommand] private void FinishRide() { Ride.FinishRide(); Refresh(); }
+    [RelayCommand] private void OpenRidesFolder() => _platform.OpenFolder(Rides.Folder);
 
     [RelayCommand]
     private void StartWorkout(LibraryEntry? entry)
@@ -453,19 +487,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task UseDemoTrainer()
     {
         if (_devices?.Trainer is not null) await _devices.DisconnectTrainerAsync();
-        if (_demo is not null) return;
-        _demo = new SimulatedTrainer(Settings.RiderKg + Settings.BikeKg);
+        if (_manualTrainer is not null) return;
+        UseTrainer(new SimulatedTrainer(Settings.RiderKg + Settings.BikeKg));
         AddLog("Demo trainer connected (simulated rider)");
+    }
+
+    /// <summary>Rides with a trainer that isn't found over Bluetooth (the demo trainer, or a test double).</summary>
+    public void UseTrainer(ITrainer trainer)
+    {
+        _manualTrainer = trainer;
         SyncDevices();
     }
 
     [RelayCommand]
     private async Task DisconnectTrainer()
     {
-        if (_demo is { } demo)
+        if (_manualTrainer is { } manual)
         {
-            _demo = null;
-            await demo.DisposeAsync();
+            _manualTrainer = null;
+            await manual.DisposeAsync();
         }
         if (_devices is not null) await _devices.DisconnectTrainerAsync();
         SyncDevices();
@@ -482,10 +522,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _devices.ConnectHeartRateAsync(device.Address);
             return;
         }
-        if (_demo is { } demo)
+        if (_manualTrainer is { } manual)
         {
-            _demo = null;
-            await demo.DisposeAsync();
+            _manualTrainer = null;
+            await manual.DisposeAsync();
         }
         _devices.AutoConnectTrainer = true;
         Settings.TrainerAddress = device.Address;
@@ -495,7 +535,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void SyncDevices()
     {
-        ITrainer? trainer = _demo ?? _devices?.Trainer;
+        ITrainer? trainer = _manualTrainer ?? _devices?.Trainer;
         if (!ReferenceEquals(trainer, _attached))
         {
             if (_attached is not null) _attached.DataReceived -= OnTrainerData;
@@ -533,10 +573,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             SaveSettingsSoon();
         }
 
+        var connecting = trainer is null && _devices?.TrainerStatus is { } ts &&
+                         (ts.StartsWith("Connecting", StringComparison.Ordinal) || ts.StartsWith("Reconnecting", StringComparison.Ordinal));
+        TrainerChipBrush = trainer is not null ? Brushes.MediumSeaGreen : connecting ? Brushes.Orange : Brushes.Gray;
+        TrainerChipText = trainer switch
+        {
+            SimulatedTrainer => "Demo trainer",
+            not null => "Trainer ✓",
+            _ when connecting => "Trainer…",
+            _ => "No trainer",
+        };
+        ClickChipBrush = clicks.Count == 0 ? Brushes.Gray : clicks.Any(c => c.IsLocked) ? Brushes.Orange : Brushes.MediumSeaGreen;
+        ClickChipText = clicks.Count switch { 0 => "No Click", 1 => "Click ✓", var n => $"Click ✓ ×{n}" };
+
         if (_devices is not null)
         {
+            var connected = new HashSet<ulong>(clicks.Select(c => c.Address));
+            if (_devices.Trainer is { } t) connected.Add(t.Address);
+            if (hrm is not null) connected.Add(hrm.Address);
             Devices.Clear();
-            foreach (var d in _devices.Discovered) Devices.Add(d);
+            foreach (var d in _devices.Discovered) Devices.Add(new DeviceRow(d, connected.Contains(d.Address)));
         }
     }
 
@@ -711,6 +767,35 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return string.Join(" · ", parts);
     }
 
+    private void SaveRide(RideRecording ride)
+    {
+        try
+        {
+            var entry = Rides.Save(ride, out var reason);
+            if (entry is null)
+            {
+                Notice = reason;
+            }
+            else
+            {
+                Notice = $"Ride saved: {entry.StatsText}. Upload {Path.GetFileName(entry.FitPath)} to Strava / Garmin Connect (Rides tab → folder).";
+                AddLog($"Saved ride {entry.FitPath}");
+                RefreshRides();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Notice = $"Couldn't save the ride: {ex.Message}";
+        }
+        NoticeEntry = null;
+    }
+
+    private void RefreshRides()
+    {
+        RideEntries.Clear();
+        foreach (var r in Rides.Load()) RideEntries.Add(r);
+    }
+
     private void AddLog(string message)
     {
         LogLines.Insert(0, $"{DateTime.Now:HH:mm:ss}  {message}");
@@ -720,13 +805,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _tick.Stop();
+        if (Ride.IsRideActive) Ride.FinishRide(); // closing the app never loses a ride
         if (_saveSettings.IsEnabled)
         {
             _saveSettings.Stop();
             SaveSettingsNow();
         }
         Library.Dispose();
-        if (_demo is not null) await _demo.DisposeAsync();
+        if (_manualTrainer is not null) await _manualTrainer.DisposeAsync();
         if (_devices is not null) await _devices.DisposeAsync();
     }
 }

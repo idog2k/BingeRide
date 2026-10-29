@@ -206,6 +206,7 @@ public class RideControllerTests
     public void Live_stats_accumulate()
     {
         var (c, _) = Create();
+        c.StartRide(T0);
         Ride(c, T0, 60, watts: 200);
         Assert.Equal(200, c.PowerW, 1);
         Assert.Equal(85, c.CadenceRpm);

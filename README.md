@@ -16,6 +16,7 @@ A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while wat
 - A **Zwift Click** shifts gears, or nudges watts in ERG.
 - A compact **always-on-top, see-through overlay** sits over the video.
 - **Heart rate** comes from any Bluetooth strap, or a watch broadcasting HR (e.g. a Garmin Forerunner 970). It shows live, with average and max.
+- **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
 
@@ -40,10 +41,20 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 
 ## Riding
 
+**Device chips (top right):** green means connected, orange means connecting (or the Click v2 "−" puck is locked), grey means not found. Hover a chip for details. The *Devices* tab marks connected devices **✓ Connected**.
+
+**Recording a ride**
+- Press **Start ride**, the red button, or Space.
+- Time, distance, kJ, power and heart-rate totals only count while recording. They pause on **❚❚** and auto-pause when you stop pedalling.
+- **Finish** saves the ride to `Documents\MyWahoo\Rides` as a `.fit` file plus a summary, listed in the *Rides* tab. Upload the file at strava.com/upload, in Garmin Connect (Import data) or at intervals.icu.
+- Starting a workout starts recording automatically.
+- Closing the app saves an unfinished ride. Rides under a minute are discarded.
+- If your Garmin also records the session, for example with *Broadcast During Activity*, you get two activities. Keep one.
+
 | Control | Action |
 |---|---|
 | Click `+` / `−` (and **B** = down) | Gears in Slope/Free and in slope/free workout steps; watts in ERG; intensity ±2 % in ERG workout steps |
-| Keyboard `+`/`−`/↑/↓, Space | Same, plus pause/resume a workout |
+| Keyboard `+`/`−`/↑/↓, Space | Same, plus start / pause / resume the ride |
 | **Overlay** button / `Ctrl+Alt+K` | Switch between the full window and the compact overlay |
 | `Ctrl+Alt+L` | Mouse click-through on the overlay (so you can click Netflix underneath) |
 | Overlay `−` / ☀ | Background more / less transparent; drag anywhere to move |

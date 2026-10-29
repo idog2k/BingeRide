@@ -38,11 +38,12 @@ public sealed class UiTests : IDisposable
 
     private MainViewModel CreateVm()
     {
-        var settings = new AppSettings { Ftp = 140, WorkoutsFolder = _folder };
+        var settings = new AppSettings { Ftp = 140, WorkoutsFolder = _folder, RidesFolder = Path.Combine(_folder, "rides") };
         var vm = new MainViewModel(new DefaultPlatformServices(), settings, Path.Combine(_folder, "settings.json"));
         vm.Start(watchLibrary: false);
         Dispatcher.UIThread.RunJobs(); // library refreshes are posted to the UI thread
-        vm.Ride.Trainer = new SimulatedTrainer(autoRun: false);
+        vm.UseTrainer(new SimulatedTrainer(autoRun: false));
+        vm.Ride.Tick(T0); // the ride clock starts at the test's fake time
         return vm;
     }
 
@@ -83,6 +84,7 @@ public sealed class UiTests : IDisposable
         var vm = CreateVm();
         vm.UpCommand.Execute(null);
         vm.UpCommand.Execute(null);
+        vm.Ride.StartRide(T0);
         Ride(vm, T0, 90);
         Assert.Equal("14", vm.GearText);
         Assert.StartsWith("avg ", vm.HeartRateStatsText); // demo rider's HR is tracked
@@ -145,7 +147,7 @@ public sealed class UiTests : IDisposable
         var w = new MainWindow { DataContext = vm, Width = 1200, Height = 900 };
         w.Show();
         var tabs = w.GetVisualDescendants().OfType<TabControl>().First();
-        tabs.SelectedIndex = 2;
+        tabs.SelectedIndex = 3;
         Save(w, "main-settings.png");
     }
 
@@ -169,6 +171,48 @@ public sealed class UiTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_folder, "quick-openers.json")));
         vm.StartNoticeWorkoutCommand.Execute(null);
         Assert.Equal(RideMode.Workout, vm.Ride.Mode);
+    }
+
+    [AvaloniaFact]
+    public void Finished_ride_is_saved_as_fit_and_listed()
+    {
+        var vm = CreateVm();
+        Assert.True(vm.TrainerConnected);
+        Assert.Equal("Demo trainer", vm.TrainerChipText);
+        Assert.True(vm.IsRideIdle);
+        vm.Ride.Tick(T0);
+        vm.StartRideCommand.Execute(null);
+        Ride(vm, T0, 5 * 60);
+        Assert.True(vm.IsRecording);
+        Assert.Equal("5:00", vm.RideTimeText);
+
+        var w = new MainWindow { DataContext = vm, Width = 1200, Height = 780 };
+        w.Show();
+        Save(w, "main-recording.png");
+
+        vm.FinishRideCommand.Execute(null);
+        var fit = Directory.GetFiles(Path.Combine(_folder, "rides"), "*.fit");
+        Assert.Single(fit);
+        Assert.True(File.Exists(Path.ChangeExtension(fit[0], ".json")));
+        Assert.Single(vm.RideEntries);
+        Assert.StartsWith("Ride saved: 5:00", vm.Notice);
+        Assert.True(vm.IsRideIdle);
+
+        var tabs = w.GetVisualDescendants().OfType<TabControl>().First();
+        tabs.SelectedIndex = 2;
+        Save(w, "main-rides.png");
+    }
+
+    [AvaloniaFact]
+    public void Accidental_short_ride_is_not_saved()
+    {
+        var vm = CreateVm();
+        vm.Ride.Tick(T0);
+        vm.StartRideCommand.Execute(null);
+        Ride(vm, T0, 20);
+        vm.FinishRideCommand.Execute(null);
+        Assert.False(Directory.Exists(Path.Combine(_folder, "rides")) && Directory.GetFiles(Path.Combine(_folder, "rides")).Length > 0);
+        Assert.Contains("not saved", vm.Notice);
     }
 
     [AvaloniaFact]

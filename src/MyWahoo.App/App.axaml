@@ -102,8 +102,14 @@
       <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="14" />
     </Style>
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="{StaticResource Panel2Brush}" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="9,5" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.mode">
-      <Setter Property="MinWidth" Value="92" />
+      <Setter Property="MinWidth" Value="76" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="FontWeight" Value="SemiBold" />
