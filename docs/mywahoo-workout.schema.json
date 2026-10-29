@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mywahoo:workout:v1",
+  "title": "MyWahoo workout (mywahoo-workout v1)",
+  "description": "Workout file for the MyWahoo KICKR trainer app. See docs/workout-format.md. The importer is more lenient than this schema (it also accepts comments, trailing commas, \"duration\", FTP fractions...), but files should be written to this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "name", "power_unit", "steps"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "mywahoo-workout" },
+    "version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string" },
+    "author": { "type": "string" },
+    "ftp": {
+      "type": "number", "exclusiveMinimum": 0, "maximum": 1000,
+      "description": "FTP in watts the author assumed. Informational: %FTP targets always scale to the rider's current FTP."
+    },
+    "power_unit": {
+      "enum": ["pct_ftp", "watts"],
+      "description": "Unit of every power/from/to value: percent of FTP (75 = 75 %) or absolute watts."
+    },
+    "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "steps": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/steady" },
+          { "$ref": "#/$defs/ramp" },
+          { "$ref": "#/$defs/slope" },
+          { "$ref": "#/$defs/free" },
+          { "$ref": "#/$defs/repeat" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "sec": { "type": "number", "minimum": 1, "description": "Duration in seconds." },
+    "min": { "type": "number", "exclusiveMinimum": 0, "description": "Duration in minutes (may be fractional); alternative to sec." },
+    "m": { "type": "number", "minimum": 1, "description": "Length in metres (slope/free only)." },
+    "power": {
+      "type": "number", "minimum": 0, "maximum": 2000,
+      "description": "Percent of FTP (at most 300) or watts (at most 2000), per power_unit. Write 75, never 0.75."
+    },
+    "rpm": { "type": "integer", "minimum": 30, "maximum": 200, "description": "Cadence cue in rpm (not enforced)." },
+    "grade": { "type": "number", "minimum": -20, "maximum": 25, "description": "Road grade in %." },
+    "gear": { "type": "integer", "minimum": 1, "maximum": 24, "description": "Virtual gear to select at the step start (1 easiest, 24 hardest)." },
+    "text": { "type": "string", "minLength": 1, "description": "Headline cue shown when the step starts." },
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "text"],
+        "properties": {
+          "at": { "type": "number", "minimum": 0, "description": "Seconds after the step starts." },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "timeOnly": {
+      "oneOf": [{ "required": ["sec"] }, { "required": ["min"] }]
+    },
+    "timeOrDistance": {
+      "oneOf": [{ "required": ["sec"] }, { "required": ["min"] }, { "required": ["m"] }]
+    },
+    "steady": {
+      "description": "ERG: hold one power target.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "power"],
+      "$ref": "#/$defs/timeOnly",
+      "properties": {
+        "type": { "const": "steady" },
+        "sec": { "$ref": "#/$defs/sec" },
+        "min": { "$ref": "#/$defs/min" },
+        "power": { "$ref": "#/$defs/power" },
+        "rpm": { "$ref": "#/$defs/rpm" },
+        "text": { "$ref": "#/$defs/text" },
+        "cues": { "$ref": "#/$defs/cues" }
+      }
+    },
+    "ramp": {
+      "description": "ERG: power changes linearly from 'from' to 'to'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from", "to"],
+      "$ref": "#/$defs/timeOnly",
+      "properties": {
+        "type": { "const": "ramp" },
+        "sec": { "$ref": "#/$defs/sec" },
+        "min": { "$ref": "#/$defs/min" },
+        "from": { "$ref": "#/$defs/power" },
+        "to": { "$ref": "#/$defs/power" },
+        "rpm": { "$ref": "#/$defs/rpm" },
+        "text": { "$ref": "#/$defs/text" },
+        "cues": { "$ref": "#/$defs/cues" }
+      }
+    },
+    "slope": {
+      "description": "SIM at a fixed road grade; the rider shifts virtual gears.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "grade"],
+      "$ref": "#/$defs/timeOrDistance",
+      "properties": {
+        "type": { "const": "slope" },
+        "sec": { "$ref": "#/$defs/sec" },
+        "min": { "$ref": "#/$defs/min" },
+        "m": { "$ref": "#/$defs/m" },
+        "grade": { "$ref": "#/$defs/grade" },
+        "gear": { "$ref": "#/$defs/gear" },
+        "rpm": { "$ref": "#/$defs/rpm" },
+        "text": { "$ref": "#/$defs/text" },
+        "cues": { "$ref": "#/$defs/cues" }
+      }
+    },
+    "free": {
+      "description": "No target; SIM at 'grade' (default 0 %) and the rider shifts virtual gears.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "$ref": "#/$defs/timeOrDistance",
+      "properties": {
+        "type": { "const": "free" },
+        "sec": { "$ref": "#/$defs/sec" },
+        "min": { "$ref": "#/$defs/min" },
+        "m": { "$ref": "#/$defs/m" },
+        "grade": { "$ref": "#/$defs/grade" },
+        "gear": { "$ref": "#/$defs/gear" },
+        "text": { "$ref": "#/$defs/text" },
+        "cues": { "$ref": "#/$defs/cues" }
+      }
+    },
+    "repeat": {
+      "description": "Repeats its steps 'times' times. Repeats can't contain repeats.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "times", "steps"],
+      "properties": {
+        "type": { "const": "repeat" },
+        "times": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "text": { "$ref": "#/$defs/text" },
+        "steps": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/steady" },
+              { "$ref": "#/$defs/ramp" },
+              { "$ref": "#/$defs/slope" },
+              { "$ref": "#/$defs/free" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>MyWahoo</author>
+    <name>Sweet Spot 3x8</name>
+    <description>Three 8-minute blocks at 90% FTP with 2-minute recoveries. A classic 45-minute sweet-spot builder.</description>
+    <sportType>bike</sportType>
+    <tags>
+        <tag name="sweetspot"/>
+        <tag name="45min"/>
+    </tags>
+    <workout>
+        <Warmup Duration="540" PowerLow="0.45" PowerHigh="0.75" Cadence="85">
+            <textevent timeoffset="0" message="Easy spin, build gradually"/>
+            <textevent timeoffset="480" message="One opener coming up"/>
+        </Warmup>
+        <SteadyState Duration="60" Power="1.0" Cadence="95">
+            <textevent timeoffset="0" message="Opener: one minute at FTP"/>
+        </SteadyState>
+        <IntervalsT Repeat="3" OnDuration="480" OffDuration="120" OnPower="0.90" OffPower="0.55" Cadence="90" CadenceResting="85">
+            <textevent timeoffset="0" message="Sweet spot: smooth and steady"/>
+            <textevent timeoffset="240" message="Halfway through the first block"/>
+        </IntervalsT>
+        <Cooldown Duration="300" PowerLow="0.65" PowerHigh="0.45">
+            <textevent timeoffset="0" message="Cool-down: nice work"/>
+        </Cooldown>
+    </workout>
+</workout_file>

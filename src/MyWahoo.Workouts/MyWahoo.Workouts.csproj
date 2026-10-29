@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Garmin.FIT.Sdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MyWahoo.Core/MyWahoo.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MyWahoo.Workouts.Tests" />
+  </ItemGroup>
+</Project>

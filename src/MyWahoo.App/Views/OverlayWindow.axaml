@@ -1,0 +1,87 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MyWahoo.App.ViewModels"
+        xmlns:c="using:MyWahoo.App.Controls"
+        x:Class="MyWahoo.App.Views.OverlayWindow"
+        x:DataType="vm:MainViewModel"
+        Title="MyWahoo overlay"
+        WindowDecorations="None"
+        Topmost="True"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowStartupLocation="Manual">
+  <LayoutTransformControl>
+    <LayoutTransformControl.LayoutTransform>
+      <ScaleTransform ScaleX="{Binding OverlayScale}" ScaleY="{Binding OverlayScale}" />
+    </LayoutTransformControl.LayoutTransform>
+
+    <Border x:Name="Panel" Background="{Binding OverlayBackground}" CornerRadius="14" Padding="14,6,8,10" Width="340">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+        <Grid.Effect>
+          <DropShadowEffect BlurRadius="4" OffsetX="0" OffsetY="1" Color="Black" Opacity="0.9" />
+        </Grid.Effect>
+
+        <!-- Mode + toolbar -->
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="{Binding ModeLabel}" FontSize="10" FontWeight="Bold" Foreground="{Binding ModeBrush}"
+                     LetterSpacing="1" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Opacity="0.7">
+            <Button Classes="icon" Command="{Binding OpacityDownCommand}" ToolTip.Tip="More transparent">
+              <PathIcon Data="{StaticResource IconMinus}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding OpacityUpCommand}" ToolTip.Tip="Less transparent">
+              <PathIcon Data="{StaticResource IconSun}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding ToggleClickThroughCommand}"
+                    ToolTip.Tip="Let mouse clicks pass through to Netflix (Ctrl+Alt+L turns it back off)">
+              <PathIcon Data="{StaticResource IconPointer}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding ToggleCompactCommand}" ToolTip.Tip="Full window (Ctrl+Alt+K)">
+              <PathIcon Data="{StaticResource IconExpand}" />
+            </Button>
+            <Button Classes="icon" Click="OnClose" ToolTip.Tip="Quit">
+              <PathIcon Data="{StaticResource IconClose}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <!-- Power and target -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,-6,0,0">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="{Binding PowerText}" FontSize="42" FontWeight="Bold" FontFeatures="+tnum" />
+            <TextBlock Text="W" FontSize="14" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="3,0,0,9" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" Text="{Binding TargetText}" FontSize="26" FontWeight="SemiBold"
+                     Foreground="{Binding ModeBrush}" VerticalAlignment="Center" FontFeatures="+tnum" />
+        </Grid>
+
+        <!-- Secondary numbers -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="14" Margin="0,-2,0,4">
+          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="{Binding CadenceText}" FontWeight="SemiBold" /><Run Text=" rpm" Foreground="#B8C0D0" /></TextBlock>
+          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="G" Foreground="#B8C0D0" /><Run Text="{Binding GearText}" FontWeight="SemiBold" /></TextBlock>
+          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="{Binding SpeedText}" FontWeight="SemiBold" /><Run Text=" km/h" Foreground="#B8C0D0" /></TextBlock>
+          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="♥ " Foreground="#FF4D6A" /><Run Text="{Binding HeartRateText}" FontWeight="SemiBold" /></TextBlock>
+        </StackPanel>
+
+        <!-- Workout step (or ride summary) -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+          <TextBlock Text="{Binding CompactLine}" FontSize="15" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="{Binding StepRemainingText}" FontSize="18" FontWeight="Bold" FontFeatures="+tnum"
+                     Margin="8,0,0,0" IsVisible="{Binding HasActiveWorkout}" />
+        </Grid>
+        <TextBlock Grid.Row="4" Text="{Binding NextStepText}" FontSize="12" Foreground="#B8C0D0" TextTrimming="CharacterEllipsis"
+                   IsVisible="{Binding HasActiveWorkout}" />
+
+        <StackPanel Grid.Row="5" Spacing="6" Margin="0,6,0,0">
+          <c:WorkoutChart Height="30" IsVisible="{Binding HasActiveWorkout}"
+                          Workout="{Binding ActiveWorkout}" Ftp="{Binding Ftp}" Progress="{Binding WorkoutProgress}" />
+          <Border IsVisible="{Binding HasCue}" Background="#CC1A2B45" CornerRadius="8" Padding="8,5">
+            <TextBlock Text="{Binding CueText}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </LayoutTransformControl>
+</Window>

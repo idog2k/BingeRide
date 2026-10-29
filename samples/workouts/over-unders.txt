@@ -1,0 +1,14 @@
+Warmup
+- 10m ramp 45-75% 90rpm
+- 3m 55%
+
+Main set 4x
+- 2m 95% Under
+- 1m 105% Over
+- 2m 95% Under
+- 1m 105% Over
+- 3m Z1 Recover
+
+Cooldown
+- 5m ramp 60-45%
+- 5m freeride

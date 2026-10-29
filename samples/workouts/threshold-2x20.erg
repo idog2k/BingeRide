@@ -1,0 +1,30 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Two 20-minute threshold blocks at 96% FTP (240 W at 250 W FTP) with 5 minutes easy between.
+FILE NAME = Threshold 2x20
+FTP = 250
+MINUTES WATTS
+[END COURSE HEADER]
+[COURSE DATA]
+0.00	110
+10.00	190
+10.00	125
+13.00	125
+13.00	240
+33.00	240
+33.00	125
+38.00	125
+38.00	240
+58.00	240
+58.00	150
+65.00	100
+[END COURSE DATA]
+[COURSE TEXT]
+0	Warm-up: build to tempo	10
+600	Three easy minutes before block 1	10
+780	Block 1: 20 min at threshold, settle in	10
+1980	Recover	5
+2280	Block 2: same again	10
+3480	Cool-down	5
+[END COURSE TEXT]

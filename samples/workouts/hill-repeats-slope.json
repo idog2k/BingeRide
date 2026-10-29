@@ -1,0 +1,20 @@
+{
+  "format": "mywahoo-workout",
+  "version": 1,
+  "name": "Hill repeats (SIM)",
+  "description": "Ride the trainer like a road: 4 x 4 min climbs at 6% in a gear you can turn at 70-80 rpm, free-spin recovery on the flat, then a 1 km rolling finish.",
+  "author": "Claude",
+  "power_unit": "pct_ftp",
+  "tags": ["hills", "sim", "strength"],
+  "steps": [
+    {"type": "ramp", "sec": 600, "from": 45, "to": 70, "text": "Warm-up in ERG"},
+    {"type": "free", "sec": 120, "grade": 0, "gear": 10, "text": "Shift around, find your climbing gear"},
+    {"type": "repeat", "times": 4, "text": "Hill repeats", "steps": [
+      {"type": "slope", "sec": 240, "grade": 6, "gear": 8, "rpm": 75, "text": "Climb: 6%, stay seated",
+       "cues": [{"at": 120, "text": "Halfway: shift up one if you can"}]},
+      {"type": "free", "sec": 180, "grade": 0, "gear": 12, "text": "Spin easy on the flat"}
+    ]},
+    {"type": "slope", "m": 1000, "grade": 3, "gear": 10, "text": "1 km rolling finish at 3%"},
+    {"type": "free", "sec": 300, "grade": 0, "text": "Cool-down, easy gear"}
+  ]
+}

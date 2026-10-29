@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MyWahoo.Core/MyWahoo.Core.csproj" />
+    <ProjectReference Include="../MyWahoo.Workouts/MyWahoo.Workouts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Example workouts copied into a brand-new library folder on first run. -->
+    <EmbeddedResource Include="../../samples/workouts/*" LogicalName="samples/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MyWahoo.App.Tests" />
+  </ItemGroup>
+</Project>
