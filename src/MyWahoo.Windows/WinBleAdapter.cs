@@ -44,11 +44,15 @@ internal sealed class WinBleAdapter : IBleAdapter
         lock (known.Mfr)
         {
             var name = string.IsNullOrEmpty(adv.LocalName) ? known.Name : adv.LocalName;
+            var learnedName = name is not null && known.Name is null;
             foreach (var m in adv.ManufacturerData) known.Mfr[m.CompanyId] = m.Data.ToArray();
             foreach (var s in adv.ServiceUuids.Where(s => !known.Services.Contains(s))) known.Services.Add(s);
             _seen[args.BluetoothAddress] = (name, known.Mfr, known.Services);
             merged = new BleAdvertisement(args.BluetoothAddress, name, args.RawSignalStrengthInDBm,
                 known.Services.ToList(), new Dictionary<ushort, byte[]>(known.Mfr), args.Timestamp);
+            // One line per device (when its name is first known): answers "why isn't my watch found?".
+            if (learnedName)
+                BleTrace.Log($"{args.BluetoothAddress:X12} seen: \"{name}\" rssi {args.RawSignalStrengthInDBm} services [{string.Join(",", known.Services)}] mfr [{string.Join(",", known.Mfr.Keys.Select(k => $"0x{k:X4}"))}]");
         }
         AdvertisementReceived?.Invoke(this, merged);
     }

@@ -10,7 +10,7 @@
         Width="1200" Height="780" MinWidth="960" MinHeight="620"
         Background="{StaticResource BgBrush}"
         DragDrop.AllowDrop="True">
-  <Grid RowDefinitions="Auto,Auto,*">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
 
     <!-- Header: mode switch + device status -->
     <Border Grid.Row="0" Padding="16,10" Background="{StaticResource PanelBrush}"
@@ -41,20 +41,6 @@
         </Border>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Border Classes="pill" Background="{StaticResource Panel2Brush}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <Ellipse Width="8" Height="8" Fill="{StaticResource MutedBrush}" IsVisible="{Binding !TrainerConnected}" />
-              <Ellipse Width="8" Height="8" Fill="{StaticResource GoodBrush}" IsVisible="{Binding TrainerConnected}" />
-              <TextBlock Text="{Binding TrainerStatus}" FontSize="12" MaxWidth="260" TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-          </Border>
-          <Border Classes="pill" Background="{StaticResource Panel2Brush}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <Ellipse Width="8" Height="8" Fill="{StaticResource MutedBrush}" IsVisible="{Binding !ClickConnected}" />
-              <Ellipse Width="8" Height="8" Fill="{StaticResource GoodBrush}" IsVisible="{Binding ClickConnected}" />
-              <TextBlock Text="{Binding ClickStatus}" FontSize="12" MaxWidth="240" TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-          </Border>
           <Button Command="{Binding ToggleCompactCommand}" Background="{StaticResource AccentBrush}" Foreground="#0B0D12"
                   ToolTip.Tip="Compact always-on-top overlay for Netflix (Ctrl+Alt+K)">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -124,6 +110,7 @@
                 <TextBlock Classes="metric" Text="{Binding HeartRateText}" />
                 <TextBlock Classes="unit" Text="bpm" />
               </StackPanel>
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding HeartRateStatsText}" Margin="0,-4,0,0" />
             </StackPanel>
           </Border>
         </UniformGrid>
@@ -350,6 +337,14 @@
                                Text="Click v2: the '−' puck goes silent after ~1 min unless the Zwift app unlocked it in the last ~24 h. B on the '+' puck also shifts down." />
                   </StackPanel>
                 </Border>
+                <Border Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="12">
+                  <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="HEART RATE" />
+                    <TextBlock Text="{Binding HeartRateStatus}" TextWrapping="Wrap" />
+                    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                               Text="Garmin watch: hold LIGHT for the controls menu and choose Broadcast Heart Rate (or turn on Broadcast During Activity and start an Indoor Bike activity). Any Bluetooth chest strap works too. To switch sensors, press Connect on one below." />
+                  </StackPanel>
+                </Border>
                 <TextBlock Classes="label" Text="NEARBY" Margin="2,4,0,0" />
                 <ItemsControl ItemsSource="{Binding Devices}">
                   <ItemsControl.ItemTemplate>
@@ -364,7 +359,7 @@
                             <Run Text=" dBm" />
                           </TextBlock>
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Connect" VerticalAlignment="Center"
+                        <Button Grid.Column="1" Content="Connect" VerticalAlignment="Center" IsVisible="{Binding CanConnect}"
                                 Command="{ReflectionBinding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                 CommandParameter="{Binding}" />
                       </Grid>
@@ -387,6 +382,7 @@
                   <TextBlock Grid.Row="2" Text="Bike weight (kg)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding BikeKgSetting}" Minimum="3" Maximum="30" Increment="0.5" FormatString="0.0" />
                 </Grid>
+                <CheckBox Content="Connect to a heart-rate sensor (strap or watch broadcast)" IsChecked="{Binding HeartRateEnabledSetting}" />
 
                 <TextBlock Classes="label" Text="CONTROLS" Margin="0,8,0,0" />
                 <Grid ColumnDefinitions="*,140" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
@@ -450,5 +446,27 @@
         </TabControl>
       </Border>
     </Grid>
+
+    <!-- Device status bar -->
+    <Border Grid.Row="3" Padding="16,6" Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="22">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Ellipse Width="8" Height="8" Fill="{StaticResource MutedBrush}" IsVisible="{Binding !TrainerConnected}" />
+          <Ellipse Width="8" Height="8" Fill="{StaticResource GoodBrush}" IsVisible="{Binding TrainerConnected}" />
+          <TextBlock Text="{Binding TrainerStatus}" FontSize="12" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Ellipse Width="8" Height="8" Fill="{StaticResource MutedBrush}" IsVisible="{Binding !ClickConnected}" />
+          <Ellipse Width="8" Height="8" Fill="{StaticResource GoodBrush}" IsVisible="{Binding ClickConnected}" />
+          <TextBlock Text="{Binding ClickStatus}" FontSize="12" MaxWidth="360" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="♥" FontSize="12" Foreground="{StaticResource MutedBrush}" IsVisible="{Binding !HeartRateConnected}" />
+          <TextBlock Text="♥" FontSize="12" Foreground="{StaticResource BadBrush}" IsVisible="{Binding HeartRateConnected}" />
+          <TextBlock Text="{Binding HeartRateStatus}" FontSize="12" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>

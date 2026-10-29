@@ -89,6 +89,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private string _targetText = "—";
     [ObservableProperty] private string _cadenceText = "0";
     [ObservableProperty] private string _heartRateText = "—";
+    [ObservableProperty] private string _heartRateStatsText = "";
     [ObservableProperty] private string _speedText = "0.0";
     [ObservableProperty] private string _distanceText = "0 m";
     [ObservableProperty] private string _elapsedText = "0:00";
@@ -132,6 +133,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private bool _trainerConnected;
     [ObservableProperty] private string _clickStatus = "No Zwift Click";
     [ObservableProperty] private bool _clickConnected;
+    [ObservableProperty] private string _heartRateStatus = "No heart rate";
+    [ObservableProperty] private bool _heartRateConnected;
     [ObservableProperty] private bool _bluetoothAvailable;
 
     // ---- overlay -----------------------------------------------------------------------------
@@ -192,7 +195,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 PreferredTrainer = Settings.TrainerAddress,
                 ClicksEnabled = Settings.ClickEnabled,
+                PreferredHeartRate = Settings.HeartRateAddress,
+                HeartRateEnabled = Settings.HeartRateEnabled,
             };
+            _devices.HeartRateChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
+            _devices.HeartRateReceived += (_, bpm) => Ride.OnHeartRate(bpm, DateTimeOffset.UtcNow);
             _devices.TrainerChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
             _devices.ClicksChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
             _devices.DiscoveredChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
@@ -235,6 +242,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         PowerText = $"{r.PowerW:0}";
         CadenceText = $"{r.CadenceRpm:0}";
         HeartRateText = r.HeartRate is { } hr ? $"{hr}" : "—";
+        HeartRateStatsText = r.AverageHeartRate is { } avgHr ? $"avg {avgHr} · max {r.MaxHeartRate}" : "";
         SpeedText = $"{r.SpeedKmh:0.0}";
         DistanceText = Fmt.Distance(r.DistanceM);
         ElapsedText = Fmt.Duration(r.RideSeconds);
@@ -466,7 +474,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task ConnectDevice(DiscoveredDevice? device)
     {
-        if (device is null || _devices is null || device.Role != DeviceRole.Trainer) return;
+        if (device is null || _devices is null || device.Role == DeviceRole.Click) return;
+        if (device.Role == DeviceRole.HeartRate)
+        {
+            Settings.HeartRateAddress = device.Address;
+            SaveSettingsSoon();
+            await _devices.ConnectHeartRateAsync(device.Address);
+            return;
+        }
         if (_demo is { } demo)
         {
             _demo = null;
@@ -508,6 +523,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ClickStatus = clicks.Count == 0
             ? "No Zwift Click"
             : string.Join(" · ", clicks.Select(c => c.IsLocked ? $"{c.DisplayName} locked" : c.DisplayName));
+
+        var hrm = _devices?.HeartRate;
+        HeartRateConnected = hrm is not null;
+        HeartRateStatus = hrm is not null ? hrm.Name : Settings.HeartRateEnabled ? "No heart rate" : "Heart rate off";
+        if (hrm is not null && Settings.HeartRateAddress != hrm.Address)
+        {
+            Settings.HeartRateAddress = hrm.Address;
+            SaveSettingsSoon();
+        }
 
         if (_devices is not null)
         {
@@ -595,6 +619,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => Settings.TrainerControl;
         set => UpdateSetting(() => Settings.TrainerControl = value);
+    }
+
+    public bool HeartRateEnabledSetting
+    {
+        get => Settings.HeartRateEnabled;
+        set
+        {
+            UpdateSetting(() => Settings.HeartRateEnabled = value);
+            if (_devices is not null) _devices.HeartRateEnabled = value;
+        }
     }
 
     public bool StartCompactSetting

@@ -15,6 +15,7 @@ A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while wat
 **Control**
 - A **Zwift Click** shifts gears, or nudges watts in ERG.
 - A compact **always-on-top, see-through overlay** sits over the video.
+- **Heart rate** comes from any Bluetooth strap, or a watch broadcasting HR (e.g. a Garmin Forerunner 970). It shows live, with average and max.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
 
@@ -33,6 +34,7 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 3. Start MyWahoo and pedal so the KICKR wakes up.
    - It connects automatically. The header shows `KICKR CORE … · virtual shifting`, or `· FTMS` if the trainer refused Zwift's protocol.
    - Press any Click button so it advertises.
+   - On the Garmin, hold **LIGHT** → **Broadcast Heart Rate**. Or enable *Broadcast During Activity* and start an Indoor Bike activity. The app connects to the first heart-rate sensor it sees and remembers it; *Devices → Connect* switches to another one.
 4. In **Free**, shift through a few gears and check that the resistance changes. Then try **ERG** at 120 W.
 5. If something misbehaves, the Bluetooth trace is in `%LOCALAPPDATA%\MyWahoo\logs\ble-*.log`, with every byte sent and received. *Settings → Trainer (advanced)* can force FTMS or send ERG over FTMS.
 

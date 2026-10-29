@@ -21,6 +21,8 @@ public sealed class AppSettings
     public bool AutoPause { get; set; } = true;
 
     public ulong? TrainerAddress { get; set; }
+    public ulong? HeartRateAddress { get; set; }
+    public bool HeartRateEnabled { get; set; } = true;
     public TrainerControlPreference TrainerControl { get; set; } = TrainerControlPreference.Auto;
     public bool ErgViaFtms { get; set; }
 

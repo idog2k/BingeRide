@@ -85,6 +85,7 @@ public sealed class UiTests : IDisposable
         vm.UpCommand.Execute(null);
         Ride(vm, T0, 90);
         Assert.Equal("14", vm.GearText);
+        Assert.StartsWith("avg ", vm.HeartRateStatsText); // demo rider's HR is tracked
         var w = new MainWindow { DataContext = vm, Width = 1200, Height = 780 };
         w.Show();
         Save(w, "main-free.png");

@@ -24,6 +24,8 @@ public sealed class RideController
     private (double Rpm, DateTimeOffset At)? _cadence;
     private (int Watts, DateTimeOffset At)? _latestPower;
     private (int Bpm, DateTimeOffset At)? _heartRate;
+    private (int Bpm, DateTimeOffset At)? _sensorHeartRate;
+    private double _heartBeatsWeighted, _heartSeconds;
     private DateTimeOffset? _lastTick;
     private DateTimeOffset _lastPedalling;
     private ITrainer? _trainer;
@@ -55,6 +57,8 @@ public sealed class RideController
     public double PowerW { get; private set; }
     public double CadenceRpm { get; private set; }
     public int? HeartRate { get; private set; }
+    public int? AverageHeartRate => _heartSeconds > 0 ? (int)Math.Round(_heartBeatsWeighted / _heartSeconds) : null;
+    public int? MaxHeartRate { get; private set; }
     public double SpeedKmh => _speedMps * 3.6;
     public double DistanceM { get; private set; }
     public double RideSeconds { get; private set; }
@@ -254,6 +258,12 @@ public sealed class RideController
         }
     }
 
+    /// <summary>Thread-safe: a reading from a dedicated heart-rate sensor (strap or broadcasting watch).</summary>
+    public void OnHeartRate(int bpm, DateTimeOffset at)
+    {
+        lock (_samplesLock) _sensorHeartRate = (bpm, at);
+    }
+
     public void Tick(DateTimeOffset now)
     {
         var dt = _lastTick is { } last ? Math.Clamp((now - last).TotalSeconds, 0, 2) : 0;
@@ -273,7 +283,13 @@ public sealed class RideController
         {
             RideSeconds += dt;
             WorkKj += PowerW * dt / 1000;
+            if (HeartRate is { } bpm)
+            {
+                _heartBeatsWeighted += bpm * dt;
+                _heartSeconds += dt;
+            }
         }
+        if (HeartRate is { } current && current > (MaxHeartRate ?? 0)) MaxHeartRate = current;
 
         if (Mode == RideMode.Workout && Player is { IsFinished: false } player && !IsWorkoutPaused && !IsAutoPaused)
             Apply(player.Advance(dt, distance));
@@ -291,7 +307,10 @@ public sealed class RideController
             PowerW = _powerSamples.Count > 0 ? _powerSamples.Average(s => s.Watts) : 0;
             CadenceRpm = _cadence is { } c && now - c.At <= StaleAfter ? c.Rpm : 0;
             _instantPower = _latestPower is { } lp && now - lp.At <= StaleAfter ? lp.Watts : 0;
-            HeartRate = _heartRate is { } h && now - h.At <= StaleAfter ? h.Bpm : null;
+            // A dedicated sensor wins; the trainer's relayed HR is the fallback.
+            HeartRate = _sensorHeartRate is { } s && now - s.At <= StaleAfter ? s.Bpm
+                : _heartRate is { } h && now - h.At <= StaleAfter ? h.Bpm
+                : null;
         }
     }
 
