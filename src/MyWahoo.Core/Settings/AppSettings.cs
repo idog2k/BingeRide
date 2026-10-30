@@ -9,6 +9,7 @@ namespace MyWahoo.Core.Settings;
 public enum OverlayField
 {
     Power, Target, Cadence, Speed, HeartRate, Gear, Grade, Distance, RideTime, AvgPower, WorkKj, AvgHeartRate, MaxHeartRate,
+    Calories, Food, Landmark,
 }
 
 /// <summary>What a Click button does. Up/Down are context-sensitive: ERG watts in ERG, gears otherwise.</summary>
@@ -25,6 +26,12 @@ public sealed class AppSettings
     public double WorkoutIntensityStepPct { get; set; } = 2;
     public int StartGear { get; set; } = GearTable.DefaultGear;
     public bool AutoPause { get; set; } = true;
+
+    /// <summary>Show the food your ride burns (🍕 = calories) on workout charts, as cues, and in ride summaries.</summary>
+    public bool ShowFood { get; set; } = true;
+
+    /// <summary>Show distance as famous trips (Tel Aviv → Haifa, New York → Los Angeles…), with milestone cues.</summary>
+    public bool ShowLandmarks { get; set; } = true;
 
     public ulong? TrainerAddress { get; set; }
     public ulong? HeartRateAddress { get; set; }
@@ -56,6 +63,19 @@ public sealed class AppSettings
     public bool StartCompact { get; set; }
 
     public string? WorkoutsFolder { get; set; }
+
+    /// <summary>Web remote for phones on the home network (off until the first phone is paired).</summary>
+    public bool RemoteEnabled { get; set; }
+    /// <summary>
+    /// Below Windows' dynamic range (49152+) and away from 44000–49000, which WSL's mirrored networking
+    /// reserves on some PCs. If it's taken anyway, the app falls back to another port and remembers it.
+    /// </summary>
+    public int RemotePort { get; set; } = DefaultRemotePort;
+
+    public const int DefaultRemotePort = 18765;
+
+    /// <summary>Phones paired by QR code. Only a hash of each phone's key is stored.</summary>
+    public List<PairedPhone> PairedPhones { get; set; } = [];
 
     [JsonIgnore]
     public string ResolvedWorkoutsFolder => string.IsNullOrWhiteSpace(WorkoutsFolder) ? DefaultWorkoutsFolder : WorkoutsFolder;
@@ -100,6 +120,15 @@ public sealed class AppSettings
         ResetIdleRightPuck = ClickResetIdleRightPuck,
         RebootLockedLeftPuck = ClickRebootLockedLeftPuck,
     };
+}
+
+public sealed class PairedPhone
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    public string Name { get; set; } = "Phone";
+    public string KeyHash { get; set; } = "";
+    public DateTimeOffset PairedAt { get; set; }
+    public DateTimeOffset? LastSeen { get; set; }
 }
 
 public static class SettingsStore

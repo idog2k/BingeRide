@@ -11,9 +11,18 @@ WriteIco(Path.Combine(outDir, "app.ico"), entries);
 File.WriteAllBytes(Path.Combine(outDir, "logo-64.png"), Png(Render(64, true)));
 File.WriteAllBytes(Path.Combine(outDir, "logo-256.png"), Png(Render(256, true)));
 File.WriteAllBytes(Path.Combine(outDir, "logo-32.png"), Png(Render(32, false)));
+// Phone home-screen icons (web remote): full-bleed squares, because iOS rounds corners itself and fills transparency with black.
+var webDir = args.Length > 1 ? args[1] : null;
+if (webDir is not null)
+{
+    Directory.CreateDirectory(webDir);
+    File.WriteAllBytes(Path.Combine(webDir, "apple-touch-icon.png"), Png(Render(180, true, fullBleed: true)));
+    File.WriteAllBytes(Path.Combine(webDir, "icon-192.png"), Png(Render(192, true, fullBleed: true)));
+    File.WriteAllBytes(Path.Combine(webDir, "icon-512.png"), Png(Render(512, true, fullBleed: true)));
+}
 Console.WriteLine($"Wrote app.ico ({string.Join(", ", icoSizes)}) and logo PNGs to {Path.GetFullPath(outDir)}");
 
-static SKBitmap Render(int size, bool detailed)
+static SKBitmap Render(int size, bool detailed, bool fullBleed = false)
 {
     // Draw large, then downscale with mipmaps for clean anti-aliasing at every size.
     const int master = 1024;
@@ -21,7 +30,7 @@ static SKBitmap Render(int size, bool detailed)
     using (var canvas = new SKCanvas(big))
     {
         canvas.Clear(SKColors.Transparent);
-        DrawIcon(canvas, detailed);
+        DrawIcon(canvas, detailed, fullBleed);
     }
     using var image = SKImage.FromBitmap(big);
     var result = new SKBitmap(size, size, SKColorType.Rgba8888, SKAlphaType.Premul);
@@ -33,7 +42,7 @@ static SKBitmap Render(int size, bool detailed)
     return result;
 }
 
-static void DrawIcon(SKCanvas c, bool detailed)
+static void DrawIcon(SKCanvas c, bool detailed, bool fullBleed = false)
 {
     // Rounded tile with a deep blue-to-black gradient.
     using var tile = new SKPaint
@@ -42,7 +51,8 @@ static void DrawIcon(SKCanvas c, bool detailed)
         Shader = SKShader.CreateLinearGradient(new SKPoint(512, 24), new SKPoint(512, 1000),
             [SKColor.Parse("#26364F"), SKColor.Parse("#0B0D12")], SKShaderTileMode.Clamp),
     };
-    c.DrawRoundRect(new SKRoundRect(new SKRect(24, 24, 1000, 1000), detailed ? 220 : 200), tile);
+    if (fullBleed) c.DrawRect(new SKRect(0, 0, 1024, 1024), tile);
+    else c.DrawRoundRect(new SKRoundRect(new SKRect(24, 24, 1000, 1000), detailed ? 220 : 200), tile);
 
     if (detailed)
     {

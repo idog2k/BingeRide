@@ -117,6 +117,9 @@ public sealed class UiTests : IDisposable
         Assert.Equal(RideMode.Workout, vm.Ride.Mode);
         Assert.IsType<ErgTarget>(vm.Ride.CurrentTarget);
         Assert.Equal(168, ((ErgTarget)vm.Ride.CurrentTarget!).Watts);
+        Assert.NotNull(vm.ActiveFoodMarkers);
+        Assert.NotEmpty(vm.ActiveFoodMarkers!);
+        Assert.Contains("🍎", vm.BurnedFoodText);
 
         var w = new MainWindow { DataContext = vm, Width = 1200, Height = 780 };
         w.Show();
@@ -246,6 +249,64 @@ public sealed class UiTests : IDisposable
         vm.ResetOverlayFieldsCommand.Execute(null);
         Assert.Equal(AppSettings.DefaultOverlayFields(), vm.Settings.OverlayFields);
         Assert.Equal(OverlayField.Power, vm.OverlayFieldOptions[0].Field);
+    }
+
+    [AvaloniaFact]
+    public async Task Pairing_shows_a_one_time_qr_code()
+    {
+        var vm = CreateVm();
+        vm.Settings.RemotePort = 0; // any free port
+        await vm.PairPhoneCommand.ExecuteAsync(null);
+        Assert.True(vm.RemoteRunning, vm.RemoteStatus);
+        Assert.True(vm.IsPairing);
+        Assert.NotNull(vm.PairingQr);
+        Assert.Matches(@"^http://\d+\.\d+\.\d+\.\d+:\d+/pair\?c=[A-Za-z0-9_-]{20,}$", vm.PairingUrl);
+
+        var w = new MainWindow { DataContext = vm, Width = 1200, Height = 900 };
+        w.Show();
+        w.GetVisualDescendants().OfType<TabControl>().First().SelectedIndex = 1;
+        Save(w, "main-devices-pairing.png");
+
+        vm.CancelPairingCommand.Execute(null);
+        Assert.False(vm.IsPairing);
+        await vm.TurnOffRemoteCommand.ExecuteAsync(null);
+        Assert.False(vm.RemoteRunning);
+        Assert.False(vm.Settings.RemoteEnabled);
+    }
+
+    [AvaloniaFact]
+    public async Task Busy_port_falls_back_and_is_remembered()
+    {
+        var vm = CreateVm();
+        using var blocker = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 0);
+        blocker.Start();
+        var busy = ((System.Net.IPEndPoint)blocker.LocalEndpoint).Port;
+        vm.Settings.RemotePort = busy;
+        vm.FallbackPorts = [0]; // never bind real default ports from WSL (see FallbackPorts)
+        await vm.PairPhoneCommand.ExecuteAsync(null);
+        Assert.True(vm.RemoteRunning, vm.RemoteStatus);
+        Assert.NotEqual(busy, vm.Settings.RemotePort);
+        Assert.Contains($":{vm.Settings.RemotePort}/pair?c=", vm.PairingUrl);
+        await vm.TurnOffRemoteCommand.ExecuteAsync(null);
+    }
+
+    [AvaloniaFact]
+    public void Phone_commands_drive_the_app()
+    {
+        var vm = CreateVm();
+        Assert.True(vm.Execute(new MyWahoo.App.Services.Remote.RemoteCommand("mode", Mode: "Erg")));
+        Assert.Equal(RideMode.Erg, vm.Ride.Mode);
+        vm.Refresh();
+        Assert.Equal("watts", vm.BuildRemoteState().Control);
+        Assert.True(vm.Execute(new("startRide")));
+        Assert.Equal(RideState.Recording, vm.Ride.State);
+        var vo2 = vm.Workouts.First(e => e.Name.StartsWith("VO2max"));
+        Assert.True(vm.Execute(new("startWorkout", Workout: vo2.FileName)));
+        Assert.Equal(RideMode.Workout, vm.Ride.Mode);
+        vm.Refresh();
+        Assert.NotNull(vm.BuildRemoteState().Workout);
+        Assert.False(vm.Execute(new("startWorkout", Workout: "nope.json")));
+        Assert.False(vm.Execute(new("bogus")));
     }
 
     [AvaloniaFact]

@@ -16,6 +16,7 @@ A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while wat
 - A **Zwift Click** shifts gears, or nudges watts in ERG.
 - A compact **always-on-top, see-through overlay** sits over the video.
 - **Heart rate** comes from any Bluetooth strap, or a watch broadcasting HR (e.g. a Garmin Forerunner 970). It shows live, with average and max.
+- **Food burned 🍕:** ride energy turned into food (kcal ≈ kJ of work). Workouts show 🍎🍌🍪🍕🍔 on the chart where you'll burn each one. Free rides pop up "🍕 Slice of pizza burned!" as you go. Rides list them, the overlay can show them, and *Settings* turns it off.
 - **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
@@ -66,6 +67,23 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 
 Workouts pause automatically when you stop pedalling. Button mappings, FTP and steps are in *Settings*, saved to `%APPDATA%\MyWahoo\settings.json`.
 
+## iPhone remote
+
+The PC app keeps talking Bluetooth to the trainer. Your phone becomes a live dashboard and remote over home Wi-Fi: power, heart rate, food, workout step and time left, plus gears/watts ±, modes, start, pause and finish a ride, starting workouts, and ride history.
+
+**Pairing (one time)**
+1. *Devices → 📱 Pair a phone*. The first time, Windows Firewall asks: allow MyWahoo on **private** networks.
+2. Scan the QR with the iPhone Camera, then tap the link.
+3. In Safari: Share → **Add to Home Screen**.
+
+**Security**
+- The QR holds a one-time code that expires after 5 minutes.
+- Pairing gives the phone its own random key, an HttpOnly cookie. The app stores only its hash.
+- Anything else on your network gets "Not paired". *Devices → Forget* removes a phone, and *Turn off* stops the web server.
+- Traffic is plain HTTP inside your home network, like most smart-home gear.
+
+The page keeps the phone awake after your first tap.
+
 ## Workouts from Claude
 
 The app watches `Documents\MyWahoo\Workouts`. A file that appears there shows up as **"New workout: … Start now"**.
@@ -89,7 +107,7 @@ src/MyWahoo.Workouts   importers: json, zwo, erg/mrc, intervals.icu, fit, gpx/tc
 src/MyWahoo.App        Avalonia UI: main window, overlay, workout chart (platform-neutral)
 src/MyWahoo.Windows    WinRT Bluetooth, click-through/topmost/hotkeys, exe entry point
 tests/                 xunit; App.Tests renders the UI headlessly into ./screenshots
-tools/IconGen          regenerates src/MyWahoo.App/Assets (app.ico + logos): dotnet run --project tools/IconGen -- src/MyWahoo.App/Assets
+tools/IconGen          regenerates the icons: dotnet run --project tools/IconGen -- src/MyWahoo.App/Assets src/MyWahoo.App/Web
 skills/                the Claude skill
 docs/                  workout format, protocol notes and sources
 ```

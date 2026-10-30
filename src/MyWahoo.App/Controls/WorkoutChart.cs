@@ -1,6 +1,8 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using MyWahoo.Core.Session;
 using MyWahoo.Core.Workouts;
 
 namespace MyWahoo.App.Controls;
@@ -11,8 +13,16 @@ public sealed class WorkoutChart : Control
     public static readonly StyledProperty<Workout?> WorkoutProperty = AvaloniaProperty.Register<WorkoutChart, Workout?>(nameof(Workout));
     public static readonly StyledProperty<double> FtpProperty = AvaloniaProperty.Register<WorkoutChart, double>(nameof(Ftp), 200);
     public static readonly StyledProperty<double> ProgressProperty = AvaloniaProperty.Register<WorkoutChart, double>(nameof(Progress), -1);
+    public static readonly StyledProperty<IReadOnlyList<FoodMarker>?> FoodMarkersProperty =
+        AvaloniaProperty.Register<WorkoutChart, IReadOnlyList<FoodMarker>?>(nameof(FoodMarkers));
 
-    static WorkoutChart() => AffectsRender<WorkoutChart>(WorkoutProperty, FtpProperty, ProgressProperty);
+    static WorkoutChart() => AffectsRender<WorkoutChart>(WorkoutProperty, FtpProperty, ProgressProperty, FoodMarkersProperty);
+
+    /// <summary>Foods drawn above the profile where they'll be burned (time-based workouts only).</summary>
+    public IReadOnlyList<FoodMarker>? FoodMarkers { get => GetValue(FoodMarkersProperty); set => SetValue(FoodMarkersProperty, value); }
+
+    private static readonly Typeface EmojiTypeface = new(new FontFamily("Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji"));
+    private static readonly IBrush Tick = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 
     public Workout? Workout { get => GetValue(WorkoutProperty); set => SetValue(WorkoutProperty, value); }
     public double Ftp { get => GetValue(FtpProperty); set => SetValue(FtpProperty, value); }
@@ -53,6 +63,11 @@ public sealed class WorkoutChart : Control
         if (w is null || w.Steps.Count == 0 || size.Width < 2 || size.Height < 2) return;
 
         var ftp = Ftp > 0 ? Ftp : 200;
+
+        // Reserve a band at the top for food when there are markers to show.
+        var markers = w.HasDistanceSteps ? null : FoodMarkers;
+        var band = markers is { Count: > 0 } ? Math.Clamp(size.Height * 0.3, 12, 24) : 0;
+        var chartHeight = size.Height - band;
         // Routes mix distance and time steps: put both on one axis, ~8 m/s standing in for time steps.
         var byDistance = w.HasDistanceSteps;
         double Length(WorkoutStep s) => byDistance ? s.DistanceM + s.DurationSec * 8 : s.DurationSec;
@@ -67,7 +82,7 @@ public sealed class WorkoutChart : Control
             _ => 30,
         };
         var maxPct = Math.Max(130, w.Steps.Max(s => Math.Max(Height(s, 0), Height(s, 1))) * 1.05);
-        double Y(double pct) => size.Height - Math.Clamp(pct / maxPct, 0.02, 1) * size.Height;
+        double Y(double pct) => size.Height - Math.Clamp(pct / maxPct, 0.02, 1) * chartHeight;
 
         var x = 0.0;
         foreach (var step in w.Steps)
@@ -98,8 +113,27 @@ public sealed class WorkoutChart : Control
         if (Progress >= 0)
         {
             var cx = Math.Clamp(Progress, 0, 1) * size.Width;
-            context.FillRectangle(Done, new Rect(0, 0, cx, size.Height));
-            context.DrawLine(CursorPen, new Point(cx, 0), new Point(cx, size.Height));
+            context.FillRectangle(Done, new Rect(0, band, cx, chartHeight));
+            context.DrawLine(CursorPen, new Point(cx, band), new Point(cx, size.Height));
+        }
+
+        if (markers is { Count: > 0 }) DrawFood(context, markers, total, size.Width, band);
+    }
+
+    private void DrawFood(DrawingContext context, IReadOnlyList<FoodMarker> markers, double totalSec, double width, double band)
+    {
+        var fontSize = band * 0.78;
+        var lastX = double.NegativeInfinity;
+        foreach (var marker in markers)
+        {
+            var x = marker.TimeSec / totalSec * width;
+            var reached = Progress >= 0 && marker.TimeSec / totalSec <= Progress;
+            context.FillRectangle(Tick, new Rect(x - 0.5, band - 3, 1, 3));
+            if (x - lastX < fontSize * 1.05) continue; // too crowded: keep the tick, skip the picture
+            lastX = x;
+            var text = new FormattedText(marker.Food.Emoji, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, EmojiTypeface, fontSize, Brushes.White);
+            using (context.PushOpacity(reached || Progress < 0 ? 1 : 0.4))
+                context.DrawText(text, new Point(Math.Clamp(x - text.Width / 2, 0, width - text.Width), (band - text.Height) / 2 - 1));
         }
     }
 }

@@ -7,6 +7,11 @@
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="QRCoder" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Kestrel for the phone web remote. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../MyWahoo.Core/MyWahoo.Core.csproj" />
@@ -14,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+    <EmbeddedResource Include="Web/**" LogicalName="web/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <!-- Example workouts copied into a brand-new library folder on first run. -->

@@ -128,8 +128,9 @@
                    IsVisible="{Binding HasActiveWorkout}" />
 
         <StackPanel Grid.Row="6" Spacing="6" Margin="0,6,0,0">
-          <c:WorkoutChart Height="30" IsVisible="{Binding HasActiveWorkout}"
-                          Workout="{Binding ActiveWorkout}" Ftp="{Binding Ftp}" Progress="{Binding WorkoutProgress}" />
+          <c:WorkoutChart Height="40" IsVisible="{Binding HasActiveWorkout}"
+                          Workout="{Binding ActiveWorkout}" Ftp="{Binding Ftp}" Progress="{Binding WorkoutProgress}"
+                          FoodMarkers="{Binding ActiveFoodMarkers}" />
           <Border IsVisible="{Binding HasCue}" Background="#CC1A2B45" CornerRadius="8" Padding="8,5">
             <TextBlock Text="{Binding CueText}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
           </Border>

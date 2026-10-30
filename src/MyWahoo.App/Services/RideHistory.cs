@@ -23,6 +23,19 @@ public sealed record RideEntry(string FitPath, RideSummary Summary)
         }
     }
 
+    /// <summary>"≈ ⚓ Tel Aviv → Haifa" for the Rides list.</summary>
+    public string LandmarkText => Landmarks.Equivalent(Summary.DistanceM / 1000);
+
+    /// <summary>"≈ 640 kcal 🍎🍕🍌🍩" for the Rides list.</summary>
+    public string FoodText
+    {
+        get
+        {
+            var kcal = FoodMenu.KcalFromKj(Summary.WorkKj);
+            return $"≈ {kcal:0} kcal  {string.Concat(FoodMenu.Progress(kcal).Burned.Select(f => f.Emoji))}";
+        }
+    }
+
     internal static string Duration(double seconds)
     {
         var t = TimeSpan.FromSeconds(Math.Round(seconds));

@@ -118,6 +118,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         (OverlayField.Grade, "Grade"), (OverlayField.Distance, "Distance"), (OverlayField.RideTime, "Ride time"),
         (OverlayField.AvgPower, "Average power"), (OverlayField.WorkKj, "Work (kJ)"),
         (OverlayField.AvgHeartRate, "Average heart rate"), (OverlayField.MaxHeartRate, "Max heart rate"),
+        (OverlayField.Calories, "Calories"), (OverlayField.Food, "Food burned 🍕"),
+        (OverlayField.Landmark, "Distance as a famous trip 🌍"),
     ];
 
     private static readonly IBrush HeartBrush = new SolidColorBrush(Color.Parse("#FF6B81"));
@@ -179,6 +181,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private string _compactLine = "";
     [ObservableProperty] private string _workoutBannerText = "";
 
+    // ---- food burned ---------------------------------------------------------------------------
+    [ObservableProperty] private string _burnedFoodText = "";
+    [ObservableProperty] private string _kcalText = "";
+    [ObservableProperty] private string _nextFoodText = "";
+    [ObservableProperty] private IReadOnlyList<FoodMarker>? _activeFoodMarkers;
+    [ObservableProperty] private IReadOnlyList<FoodMarker>? _selectedFoodMarkers;
+    private (Workout? Workout, double Intensity, double Ftp, bool Show) _markersKey;
+
+    // ---- distance as famous trips --------------------------------------------------------------
+    [ObservableProperty] private string _distanceLandmarkText = "";
+    [ObservableProperty] private string _lifetimeText = "";
+    [ObservableProperty] private string _lifetimeNextText = "";
+    [ObservableProperty] private double _lifetimeFraction;
+
     // ---- library -----------------------------------------------------------------------------
     [ObservableProperty] private LibraryEntry? _selectedWorkout;
     [ObservableProperty] private string _selectedSummary = "";
@@ -210,6 +226,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private IBrush _overlayBackground = Brushes.Black;
 
     public bool HasCue => !string.IsNullOrEmpty(CueText);
+    public bool ShowFood => Settings.ShowFood;
+    public bool ShowLandmarks => Settings.ShowLandmarks;
     public bool HasCompactLine => !string.IsNullOrEmpty(CompactLine);
     partial void OnCompactLineChanged(string value) => OnPropertyChanged(nameof(HasCompactLine));
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
@@ -238,6 +256,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(SelectedError));
         OnPropertyChanged(nameof(SelectedDescription));
         SelectedSummary = value?.Workout is { } w ? Summarize(w) : "";
+        SelectedFoodMarkers = value?.Workout is { } sw && Settings.ShowFood ? FoodMenu.Markers(sw, Settings.Ftp) : null;
     }
 
     /// <summary>Loads the library, starts Bluetooth and the 4 Hz ride loop.</summary>
@@ -291,6 +310,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         RefreshRides();
         SyncDevices();
+        _ = StartRemoteIfEnabledAsync();
         _tick.Start();
     }
 
@@ -389,6 +409,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             };
         }
         CueText = r.Cue;
+        RefreshFood();
+        RefreshLandmarks();
         RefreshOverlayValues();
         OverlayBackground = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(Settings.OverlayOpacity, 0.05, 1) * 255), 0x0B, 0x0D, 0x12));
         OnPropertyChanged(nameof(Ftp));
@@ -730,6 +752,30 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool ShowFoodSetting
+    {
+        get => Settings.ShowFood;
+        set
+        {
+            UpdateSetting(() => Settings.ShowFood = value);
+            OnPropertyChanged(nameof(ShowFood));
+            OnSelectedWorkoutChanged(SelectedWorkout);
+            Refresh();
+        }
+    }
+
+    public bool ShowLandmarksSetting
+    {
+        get => Settings.ShowLandmarks;
+        set
+        {
+            UpdateSetting(() => Settings.ShowLandmarks = value);
+            OnPropertyChanged(nameof(ShowLandmarks));
+            OnSelectedWorkoutChanged(SelectedWorkout);
+            Refresh();
+        }
+    }
+
     public bool StartCompactSetting
     {
         get => Settings.StartCompact;
@@ -807,7 +853,52 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (s.AverageWatts > 0) parts.Add($"avg {s.AverageWatts:0} W");
         if (s.Tss > 0) parts.Add($"TSS {s.Tss:0}");
         if (s.IntensityFactor > 0) parts.Add($"IF {s.IntensityFactor:0.00}");
+        var km = WorkoutEstimates.DistanceKm(w, Settings.Ftp, Settings.RiderKg + Settings.BikeKg);
+        if (km > 0.5)
+            parts.Add(Settings.ShowLandmarks ? $"≈ {km:0} km {Landmarks.Equivalent(km)}" : $"≈ {km:0} km");
+        if (Settings.ShowFood && s.TotalSeconds > 0)
+        {
+            var kcal = FoodMenu.KcalFromKj(s.AverageWatts * s.TotalSeconds / 1000);
+            parts.Add($"≈ {kcal:0} kcal {string.Concat(FoodMenu.Progress(kcal).Burned.Select(f => f.Emoji))}");
+        }
         return string.Join(" · ", parts);
+    }
+
+    private void RefreshFood()
+    {
+        var r = Ride;
+        var food = r.Food;
+        KcalText = $"≈ {r.Kcal:0} kcal";
+        BurnedFoodText = string.Concat(food.Burned.Select(f => f.Emoji));
+        NextFoodText = r.State == RideState.Idle
+            ? "Start a ride to see the food you burn"
+            : $"next {food.Next.Emoji} {food.Next.Name.ToLowerInvariant()} in {Math.Ceiling(food.KcalToNext):0} kcal";
+
+        var key = (r.Player?.Workout, r.WorkoutIntensityPct, (double)Settings.Ftp, Settings.ShowFood);
+        if (key != _markersKey)
+        {
+            _markersKey = key;
+            ActiveFoodMarkers = key.Workout is { } w && key.ShowFood ? FoodMenu.Markers(w, key.Item3, key.WorkoutIntensityPct) : null;
+        }
+    }
+
+    private void RefreshLandmarks()
+    {
+        var r = Ride;
+        if (r.State == RideState.Idle)
+        {
+            DistanceLandmarkText = "Start a ride to travel the world";
+        }
+        else
+        {
+            var p = Landmarks.Progress(r.DistanceM / 1000);
+            DistanceLandmarkText = (p.Passed is { } passed ? $"✓ {passed.Label} · " : "") + Landmarks.NextText(p);
+        }
+        var life = Landmarks.Progress(r.LifetimeKm);
+        LifetimeText = $"All rides: {r.LifetimeKm:#,0.#} km";
+        LifetimeNextText = (life.Next is { } next ? $"{Landmarks.Pct(life.FractionOfNext)} of the way to {next.Label}" : "")
+                           + (life.Passed is { } done ? $" · past {done.Label}" : "");
+        LifetimeFraction = life.FractionOfNext;
     }
 
     private void BuildOverlayFieldOptions()
@@ -888,6 +979,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             OverlayField.WorkKj => (KjText, "kJ", Brushes.White),
             OverlayField.AvgHeartRate => ($"♥ {r.AverageHeartRate?.ToString() ?? "—"}", "avg", HeartBrush),
             OverlayField.MaxHeartRate => ($"♥ {r.MaxHeartRate?.ToString() ?? "—"}", "max", HeartBrush),
+            OverlayField.Calories => ($"{r.Kcal:0}", "kcal", Brushes.White),
+            OverlayField.Food => (BurnedFoodText.Length > 0 ? BurnedFoodText : "—", $"next {r.Food.Next.Emoji}", Brushes.White),
+            OverlayField.Landmark => Landmarks.Progress(r.DistanceM / 1000) is { Next: { } next } lp
+                ? (Landmarks.Pct(lp.FractionOfNext), $"of {next.Label}", Brushes.White)
+                : ("🌙", "past the Moon!", (IBrush)Brushes.White),
             _ => ("", "", Brushes.White),
         };
         slot.Value = value;
@@ -906,7 +1002,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             else
             {
-                Notice = $"Ride saved: {entry.StatsText}. Upload {Path.GetFileName(entry.FitPath)} to Strava / Garmin Connect (Rides tab → folder).";
+                var trip = Settings.ShowLandmarks ? Landmarks.Equivalent(entry.Summary.DistanceM / 1000) : "";
+                Notice = $"Ride saved: {entry.StatsText}{(trip.Length > 0 ? $" ({trip})" : "")}. Upload {Path.GetFileName(entry.FitPath)} to Strava / Garmin Connect (Rides tab → folder).";
                 AddLog($"Saved ride {entry.FitPath}");
                 RefreshRides();
             }
@@ -922,6 +1019,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         RideEntries.Clear();
         foreach (var r in Rides.Load()) RideEntries.Add(r);
+        Ride.LifetimeKmBefore = RideEntries.Sum(r => r.Summary.DistanceM) / 1000;
     }
 
     private void AddLog(string message)
@@ -941,6 +1039,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         Library.Dispose();
         if (_manualTrainer is not null) await _manualTrainer.DisposeAsync();
+        await StopRemoteAsync();
         if (_devices is not null) await _devices.DisposeAsync();
     }
 }

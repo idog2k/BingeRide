@@ -79,6 +79,16 @@ public sealed class RideController
     public double RideSeconds { get; private set; }
     public double WorkKj { get; private set; }
     public double AveragePowerW => RideSeconds > 0 ? WorkKj * 1000 / RideSeconds : 0;
+    public double Kcal => FoodMenu.KcalFromKj(WorkKj);
+    public FoodProgress Food => FoodMenu.Progress(Kcal);
+    private int _foodsAnnounced;
+    private int _landmarksAnnounced, _lifetimeLandmarksAnnounced;
+    private readonly Queue<string> _pendingCues = new();
+
+    /// <summary>Distance of all saved rides (km), so all-time milestones can be celebrated mid-ride.</summary>
+    public double LifetimeKmBefore { get; set; }
+
+    public double LifetimeKm => LifetimeKmBefore + (IsRideActive ? DistanceM / 1000 : 0);
 
     public TrainerTarget? CurrentTarget { get; private set; }
     public string? Cue { get; private set; }
@@ -166,6 +176,10 @@ public sealed class RideController
         var now = at ?? _lastTick ?? DateTimeOffset.UtcNow;
         DistanceM = RideSeconds = WorkKj = _heartBeatsWeighted = _heartSeconds = 0;
         MaxHeartRate = null;
+        _foodsAnnounced = 0;
+        _landmarksAnnounced = 0;
+        _lifetimeLandmarksAnnounced = Landmarks.CountReached(LifetimeKmBefore);
+        _pendingCues.Clear();
         Recording = new RideRecording { StartTime = now, Ftp = Settings.Ftp, WorkoutName = Player?.Workout.Name };
         State = RideState.Recording;
         _lastPedalling = now; // grace period before auto-pause
@@ -375,9 +389,44 @@ public sealed class RideController
                 Apply(player.Advance(dt, distance));
         }
 
+        if (running && Settings.ShowFood)
+        {
+            var burned = Food.Burned;
+            if (burned.Count > _foodsAnnounced)
+            {
+                var food = burned[^1];
+                _foodsAnnounced = burned.Count;
+                _pendingCues.Enqueue($"{food.Emoji} {food.Name} burned! (≈ {Kcal:0} kcal so far)");
+            }
+        }
+        if (running && Settings.ShowLandmarks) AnnounceLandmarks();
+
         if (Cue is not null && now >= _cueUntil) Cue = null;
+        // Food and distance news wait for any workout instruction on screen to finish, then take turns.
+        if (_pendingCues.Count > 0 && Cue is null) ShowCue(_pendingCues.Dequeue());
         PushTarget();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void AnnounceLandmarks()
+    {
+        var km = DistanceM / 1000;
+        var reached = Landmarks.CountReached(km);
+        if (reached > _landmarksAnnounced)
+        {
+            var l = Landmarks.All[reached - 1];
+            _landmarksAnnounced = reached;
+            _pendingCues.Enqueue($"{l.Emoji} You just rode {l.Name} ({l.Km:0.#} km)!");
+        }
+        // All-time milestones only when earlier rides made the difference (otherwise it's the same news twice).
+        var lifetime = Landmarks.CountReached(LifetimeKmBefore + km);
+        if (lifetime > _lifetimeLandmarksAnnounced)
+        {
+            var l = Landmarks.All[lifetime - 1];
+            _lifetimeLandmarksAnnounced = lifetime;
+            if (LifetimeKmBefore > 0 && l.Km > km)
+                _pendingCues.Enqueue($"🏆 All your rides together: {l.Emoji} {l.Name} ({l.Km:#,0} km)!");
+        }
     }
 
     private void UpdateLiveValues(DateTimeOffset now)

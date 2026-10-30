@@ -25,10 +25,10 @@ public sealed record WorkoutSummary(
 public static class WorkoutStats
 {
     /// <summary>Estimated share of FTP for Free steps.</summary>
-    public const double FreeFtpFraction = 0.50;
+    public const double FreeFtpFraction = WorkoutEstimates.FreeFtpFraction;
 
     /// <summary>Estimated share of FTP for time-based Slope steps.</summary>
-    public const double SlopeFtpFraction = 0.65;
+    public const double SlopeFtpFraction = WorkoutEstimates.SlopeFtpFraction;
 
     const int NpWindow = 30;
 
