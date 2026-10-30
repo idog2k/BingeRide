@@ -60,6 +60,7 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 | **Overlay** button / `Ctrl+Alt+K` | Switch between the full window and the compact overlay |
 | `Ctrl+Alt+L` | Mouse click-through on the overlay (so you can click Netflix underneath) |
 | Overlay `−` / ☀ | Background more / less transparent; drag anywhere to move |
+| Overlay sliders icon | Choose and order the overlay's fields: power, target, cadence, speed, heart rate, gear, grade, distance, ride time, avg power, kJ, avg/max HR. The first two are big. Also in *Settings*. |
 
 **Zwift Click v2.** The "−" puck stops sending presses about a minute after connecting, unless the Zwift app has unlocked it in the last ~24 h. This is Zwift's lock, and no third-party app can undo it. That is why **B** on the "+" puck also shifts down. *Settings* has an option to keep rebooting the "−" puck instead, which leaves 2–3 s gaps.
 

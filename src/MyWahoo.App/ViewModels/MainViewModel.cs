@@ -25,6 +25,26 @@ public sealed partial class ClickMappingItem(ClickButtons button, string label, 
     partial void OnActionChanged(ClickAction value) => onChanged(Button, value);
 }
 
+/// <summary>One choosable overlay field (checkbox + reorder arrows).</summary>
+public sealed partial class OverlayFieldOption(OverlayField field, string label, bool selected, Action changed) : ObservableObject
+{
+    public OverlayField Field { get; } = field;
+    public string Label { get; } = label;
+
+    [ObservableProperty]
+    private bool _isSelected = selected;
+
+    partial void OnIsSelectedChanged(bool value) => changed();
+}
+
+/// <summary>A live number on the overlay, updated in place every tick.</summary>
+public sealed partial class OverlayValue : ObservableObject
+{
+    [ObservableProperty] private string _value = "";
+    [ObservableProperty] private string _unit = "";
+    [ObservableProperty] private IBrush _brush = Brushes.White;
+}
+
 /// <summary>A nearby device in the Devices list, with whether we're already connected to it.</summary>
 public sealed record DeviceRow(DiscoveredDevice Device, bool IsConnected)
 {
@@ -66,6 +86,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 (ClickButtons.Left, "D-pad left"), (ClickButtons.Right, "D-pad right"),
             }.Select(b => new ClickMappingItem(b.Button, b.Label, settings.ClickMapping.GetValueOrDefault(b.Button), OnMappingChanged)));
 
+        OverlayFieldOptions = [];
+        BuildOverlayFieldOptions();
+
         _tick = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Normal, (_, _) => OnTick());
         _saveSettings = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _saveSettings.Tick += (_, _) =>
@@ -86,6 +109,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<DeviceRow> Devices { get; } = [];
     public ObservableCollection<string> LogLines { get; } = [];
     public ObservableCollection<ClickMappingItem> ClickMappings { get; }
+
+    // ---- configurable overlay fields --------------------------------------------------------
+    private static readonly (OverlayField Field, string Label)[] OverlayFieldLabels =
+    [
+        (OverlayField.Power, "Power (3 s)"), (OverlayField.Target, "Target (watts / grade)"), (OverlayField.Cadence, "Cadence"),
+        (OverlayField.Speed, "Speed"), (OverlayField.HeartRate, "Heart rate"), (OverlayField.Gear, "Gear"),
+        (OverlayField.Grade, "Grade"), (OverlayField.Distance, "Distance"), (OverlayField.RideTime, "Ride time"),
+        (OverlayField.AvgPower, "Average power"), (OverlayField.WorkKj, "Work (kJ)"),
+        (OverlayField.AvgHeartRate, "Average heart rate"), (OverlayField.MaxHeartRate, "Max heart rate"),
+    ];
+
+    private static readonly IBrush HeartBrush = new SolidColorBrush(Color.Parse("#FF6B81"));
+
+    /// <summary>All fields: checked ones first, in display order.</summary>
+    public ObservableCollection<OverlayFieldOption> OverlayFieldOptions { get; }
+
+    public OverlayValue OverlayBig1 { get; } = new();
+    public OverlayValue OverlayBig2 { get; } = new();
+    public ObservableCollection<OverlayValue> OverlaySmall { get; } = [];
+    [ObservableProperty] private bool _hasOverlayBig1 = true;
+    [ObservableProperty] private bool _hasOverlayBig2 = true;
 
     public static IReadOnlyList<ClickAction> ClickActions { get; } = Enum.GetValues<ClickAction>();
     public static IReadOnlyList<TrainerControlPreference> ControlPreferences { get; } = Enum.GetValues<TrainerControlPreference>();
@@ -166,6 +210,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private IBrush _overlayBackground = Brushes.Black;
 
     public bool HasCue => !string.IsNullOrEmpty(CueText);
+    public bool HasCompactLine => !string.IsNullOrEmpty(CompactLine);
+    partial void OnCompactLineChanged(string value) => OnPropertyChanged(nameof(HasCompactLine));
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
     public bool HasSelection => SelectedWorkout?.Workout is not null;
     public string? SelectedError => SelectedWorkout?.Error;
@@ -333,9 +379,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else
         {
             WorkoutProgress = -1;
-            CompactLine = r.IsRideActive
-                ? $"{(r.IsPaused ? "PAUSED · " : r.IsAutoPaused ? "Pedal to resume · " : "")}{DistanceText} · {ElapsedText} · avg {AvgPowerText} W"
-                : "Not recording: press ▶ to start a ride";
+            // Numbers come from the configurable overlay fields; this line only carries the ride's state.
+            CompactLine = r.IsPaused ? "PAUSED" : r.IsAutoPaused ? "Pedal to resume" : r.IsRideActive ? "" : "Not recording: press ▶ to start a ride";
             ModeDetail = r.Mode switch
             {
                 RideMode.Erg => "Trainer holds your power. Click +/− changes watts.",
@@ -344,6 +389,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             };
         }
         CueText = r.Cue;
+        RefreshOverlayValues();
         OverlayBackground = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(Settings.OverlayOpacity, 0.05, 1) * 255), 0x0B, 0x0D, 0x12));
         OnPropertyChanged(nameof(Ftp));
         OnPropertyChanged(nameof(Gear));
@@ -762,6 +808,91 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (s.Tss > 0) parts.Add($"TSS {s.Tss:0}");
         if (s.IntensityFactor > 0) parts.Add($"IF {s.IntensityFactor:0.00}");
         return string.Join(" · ", parts);
+    }
+
+    private void BuildOverlayFieldOptions()
+    {
+        var chosen = Settings.OverlayFields.Distinct().ToList();
+        OverlayFieldOptions.Clear();
+        foreach (var field in chosen.Concat(OverlayFieldLabels.Select(l => l.Field).Except(chosen)))
+        {
+            var label = OverlayFieldLabels.First(l => l.Field == field).Label;
+            OverlayFieldOptions.Add(new OverlayFieldOption(field, label, chosen.Contains(field), OnOverlayFieldsChanged));
+        }
+        SyncOverlaySlots();
+    }
+
+    private void OnOverlayFieldsChanged()
+    {
+        Settings.OverlayFields = OverlayFieldOptions.Where(o => o.IsSelected).Select(o => o.Field).ToList();
+        SaveSettingsSoon();
+        SyncOverlaySlots();
+        RefreshOverlayValues();
+    }
+
+    [RelayCommand] private void MoveFieldUp(OverlayFieldOption? option) => MoveField(option, -1);
+    [RelayCommand] private void MoveFieldDown(OverlayFieldOption? option) => MoveField(option, +1);
+
+    private void MoveField(OverlayFieldOption? option, int delta)
+    {
+        if (option is null) return;
+        var from = OverlayFieldOptions.IndexOf(option);
+        var to = from + delta;
+        if (from < 0 || to < 0 || to >= OverlayFieldOptions.Count) return;
+        OverlayFieldOptions.Move(from, to);
+        OnOverlayFieldsChanged();
+    }
+
+    [RelayCommand]
+    private void ResetOverlayFields()
+    {
+        Settings.OverlayFields = AppSettings.DefaultOverlayFields();
+        SaveSettingsSoon();
+        BuildOverlayFieldOptions();
+        RefreshOverlayValues();
+    }
+
+    /// <summary>Resizes the small-field slots to match the selection (only when it changes, not every tick).</summary>
+    private void SyncOverlaySlots()
+    {
+        var count = Math.Max(0, Settings.OverlayFields.Count - 2);
+        while (OverlaySmall.Count > count) OverlaySmall.RemoveAt(OverlaySmall.Count - 1);
+        while (OverlaySmall.Count < count) OverlaySmall.Add(new OverlayValue());
+        HasOverlayBig1 = Settings.OverlayFields.Count > 0;
+        HasOverlayBig2 = Settings.OverlayFields.Count > 1;
+    }
+
+    private void RefreshOverlayValues()
+    {
+        var fields = Settings.OverlayFields;
+        if (fields.Count > 0) Fill(OverlayBig1, fields[0]);
+        if (fields.Count > 1) Fill(OverlayBig2, fields[1]);
+        for (var i = 2; i < fields.Count && i - 2 < OverlaySmall.Count; i++) Fill(OverlaySmall[i - 2], fields[i]);
+    }
+
+    private void Fill(OverlayValue slot, OverlayField field)
+    {
+        var r = Ride;
+        var (value, unit, brush) = field switch
+        {
+            OverlayField.Power => (PowerText, "W", Brushes.White),
+            OverlayField.Target => (TargetText, "", ModeBrush),
+            OverlayField.Cadence => (CadenceText, "rpm", Brushes.White),
+            OverlayField.Speed => (SpeedText, "km/h", Brushes.White),
+            OverlayField.HeartRate => ($"♥ {HeartRateText}", "", HeartBrush),
+            OverlayField.Gear => ($"G{GearText}", "", Brushes.White),
+            OverlayField.Grade => (GradeText, "grade", Brushes.White),
+            OverlayField.Distance => r.DistanceM >= 1000 ? ($"{r.DistanceM / 1000:0.00}", "km", Brushes.White) : ($"{r.DistanceM:0}", "m", (IBrush)Brushes.White),
+            OverlayField.RideTime => (ElapsedText, "time", Brushes.White),
+            OverlayField.AvgPower => (AvgPowerText, "W avg", Brushes.White),
+            OverlayField.WorkKj => (KjText, "kJ", Brushes.White),
+            OverlayField.AvgHeartRate => ($"♥ {r.AverageHeartRate?.ToString() ?? "—"}", "avg", HeartBrush),
+            OverlayField.MaxHeartRate => ($"♥ {r.MaxHeartRate?.ToString() ?? "—"}", "max", HeartBrush),
+            _ => ("", "", Brushes.White),
+        };
+        slot.Value = value;
+        slot.Unit = unit;
+        slot.Brush = brush;
     }
 
     private void SaveRide(RideRecording ride)

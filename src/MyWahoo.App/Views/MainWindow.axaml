@@ -4,6 +4,7 @@
         xmlns:c="using:MyWahoo.App.Controls"
         xmlns:svc="using:MyWahoo.App.Services"
         xmlns:dev="using:MyWahoo.Core.Devices"
+        xmlns:v="using:MyWahoo.App.Views"
         x:Class="MyWahoo.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="MyWahoo · KICKR control"
@@ -495,6 +496,9 @@
                 </Grid>
                 <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                            Text="Hotkeys: Ctrl+Alt+K overlay ↔ full window, Ctrl+Alt+L mouse click-through on/off." />
+                <Border Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="10,8" Margin="0,4,0,0">
+                  <v:OverlayFieldsEditor />
+                </Border>
 
                 <TextBlock Classes="label" Text="ZWIFT CLICK BUTTONS" Margin="0,8,0,0" />
                 <ItemsControl ItemsSource="{Binding ClickMappings}">

@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MyWahoo.App.ViewModels"
         xmlns:c="using:MyWahoo.App.Controls"
+        xmlns:v="using:MyWahoo.App.Views"
         x:Class="MyWahoo.App.Views.OverlayWindow"
         x:DataType="vm:MainViewModel"
         Title="MyWahoo overlay"
@@ -54,6 +55,14 @@
                 <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding IsRecording}" />
               </Panel>
             </Button>
+            <Button Classes="icon" ToolTip.Tip="Choose the overlay's fields">
+              <PathIcon Data="{StaticResource IconSliders}" />
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedRight">
+                  <v:OverlayFieldsEditor Width="270" />
+                </Flyout>
+              </Button.Flyout>
+            </Button>
             <Button Classes="icon" Command="{Binding OpacityDownCommand}" ToolTip.Tip="More transparent">
               <PathIcon Data="{StaticResource IconMinus}" />
             </Button>
@@ -73,23 +82,33 @@
           </StackPanel>
         </Grid>
 
-        <!-- Power and target -->
+        <!-- Big numbers: the first two configured fields -->
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,-6,0,0">
-          <StackPanel Orientation="Horizontal">
-            <TextBlock Text="{Binding PowerText}" FontSize="42" FontWeight="Bold" FontFeatures="+tnum" />
-            <TextBlock Text="W" FontSize="14" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="3,0,0,9" />
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding HasOverlayBig1}">
+            <TextBlock Text="{Binding OverlayBig1.Value}" Foreground="{Binding OverlayBig1.Brush}" FontSize="42" FontWeight="Bold" FontFeatures="+tnum" />
+            <TextBlock Text="{Binding OverlayBig1.Unit}" FontSize="14" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="4,0,0,9" />
           </StackPanel>
-          <TextBlock Grid.Column="1" Text="{Binding TargetText}" FontSize="26" FontWeight="SemiBold"
-                     Foreground="{Binding ModeBrush}" VerticalAlignment="Center" FontFeatures="+tnum" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" IsVisible="{Binding HasOverlayBig2}">
+            <TextBlock Text="{Binding OverlayBig2.Value}" Foreground="{Binding OverlayBig2.Brush}" FontSize="26" FontWeight="SemiBold" FontFeatures="+tnum" />
+            <TextBlock Text="{Binding OverlayBig2.Unit}" FontSize="12" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="3,0,0,5" />
+          </StackPanel>
         </Grid>
 
-        <!-- Secondary numbers -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="14" Margin="0,-2,0,4">
-          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="{Binding CadenceText}" FontWeight="SemiBold" /><Run Text=" rpm" Foreground="#B8C0D0" /></TextBlock>
-          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="G" Foreground="#B8C0D0" /><Run Text="{Binding GearText}" FontWeight="SemiBold" /></TextBlock>
-          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="{Binding SpeedText}" FontWeight="SemiBold" /><Run Text=" km/h" Foreground="#B8C0D0" /></TextBlock>
-          <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="♥ " Foreground="#FF4D6A" /><Run Text="{Binding HeartRateText}" FontWeight="SemiBold" /></TextBlock>
-        </StackPanel>
+        <!-- The rest of the configured fields -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding OverlaySmall}" Margin="0,-2,0,4">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:OverlayValue">
+              <TextBlock FontSize="15" FontFeatures="+tnum" Margin="0,0,14,0">
+                <Run Text="{Binding Value}" Foreground="{Binding Brush}" FontWeight="SemiBold" /><Run Text=" " /><Run Text="{Binding Unit}" Foreground="#B8C0D0" />
+              </TextBlock>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
         <StackPanel Grid.Row="3" Margin="0,0,0,2">
           <TextBlock Text="⚠ Trainer not connected: pedal to wake the KICKR" FontSize="12" FontWeight="SemiBold"
@@ -100,7 +119,8 @@
 
         <!-- Workout step (or ride summary) -->
         <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
-          <TextBlock Text="{Binding CompactLine}" FontSize="15" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding CompactLine}" FontSize="15" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                     IsVisible="{Binding HasCompactLine}" />
           <TextBlock Grid.Column="1" Text="{Binding StepRemainingText}" FontSize="18" FontWeight="Bold" FontFeatures="+tnum"
                      Margin="8,0,0,0" IsVisible="{Binding HasActiveWorkout}" />
         </Grid>

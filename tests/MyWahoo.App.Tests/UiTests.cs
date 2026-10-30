@@ -216,6 +216,39 @@ public sealed class UiTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Overlay_fields_are_configurable()
+    {
+        var vm = CreateVm();
+        // Pick distance + heart rate as the big numbers, then ride time, avg power and cadence.
+        foreach (var o in vm.OverlayFieldOptions) o.IsSelected = false;
+        foreach (var f in new[] { OverlayField.Distance, OverlayField.HeartRate, OverlayField.RideTime, OverlayField.AvgPower, OverlayField.Cadence })
+            vm.OverlayFieldOptions.First(o => o.Field == f).IsSelected = true;
+        // Checked order follows the list order; move Distance to the top so it's the first big number.
+        var distance = vm.OverlayFieldOptions.First(o => o.Field == OverlayField.Distance);
+        while (vm.OverlayFieldOptions.IndexOf(distance) > 0) vm.MoveFieldUpCommand.Execute(distance);
+        var hr = vm.OverlayFieldOptions.First(o => o.Field == OverlayField.HeartRate);
+        while (vm.OverlayFieldOptions.IndexOf(hr) > 1) vm.MoveFieldUpCommand.Execute(hr);
+
+        Assert.Equal([OverlayField.Distance, OverlayField.HeartRate, OverlayField.Cadence, OverlayField.RideTime, OverlayField.AvgPower],
+            vm.Settings.OverlayFields);
+
+        vm.Ride.StartRide(T0);
+        Ride(vm, T0, 10 * 60);
+        Assert.Equal("km", vm.OverlayBig1.Unit);
+        Assert.StartsWith("♥ ", vm.OverlayBig2.Value);
+        Assert.Equal(3, vm.OverlaySmall.Count);
+        Assert.Equal("10:00", vm.OverlaySmall[1].Value);
+
+        var overlay = new OverlayWindow { DataContext = vm };
+        overlay.Show();
+        Save(overlay, "overlay-custom-fields.png");
+
+        vm.ResetOverlayFieldsCommand.Execute(null);
+        Assert.Equal(AppSettings.DefaultOverlayFields(), vm.Settings.OverlayFields);
+        Assert.Equal(OverlayField.Power, vm.OverlayFieldOptions[0].Field);
+    }
+
+    [AvaloniaFact]
     public void Click_buttons_drive_the_controller()
     {
         var vm = CreateVm();

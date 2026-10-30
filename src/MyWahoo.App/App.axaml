@@ -28,6 +28,9 @@
     <StreamGeometry x:Key="IconPaste">F0 M9,2 H15 V4 H19 V22 H5 V4 H9 Z M7,6 V20 H17 V6 Z M9,9 H15 V11 H9 Z M9,13 H15 V15 H9 Z</StreamGeometry>
     <StreamGeometry x:Key="IconFolder">M2,5 H9 L11,7 H22 V19 H2 Z</StreamGeometry>
     <StreamGeometry x:Key="IconImport">M10.8,3 H13.2 V12.5 L16.6,9.1 L18.3,10.8 L12,17.1 L5.7,10.8 L7.4,9.1 L10.8,12.5 Z M4,19 H20 V21.4 H4 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconSliders">M3,5.2 H21 V6.8 H3 Z M14,3 H17 V9 H14 Z M3,11.2 H21 V12.8 H3 Z M7,9 H10 V15 H7 Z M3,17.2 H21 V18.8 H3 Z M12,15 H15 V21 H12 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronUp">M12,7 L19,14 L17.6,15.4 L12,9.8 L6.4,15.4 L5,14 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronDown">M12,17 L5,10 L6.4,8.6 L12,14.2 L17.6,8.6 L19,10 Z</StreamGeometry>
     <StreamGeometry x:Key="IconClose">M5.6,4.2 L12,10.6 L18.4,4.2 L19.8,5.6 L13.4,12 L19.8,18.4 L18.4,19.8 L12,13.4 L5.6,19.8 L4.2,18.4 L10.6,12 L4.2,5.6 Z</StreamGeometry>
   </Application.Resources>
 

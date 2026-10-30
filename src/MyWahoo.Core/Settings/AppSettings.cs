@@ -5,6 +5,12 @@ using MyWahoo.Core.Protocol;
 
 namespace MyWahoo.Core.Settings;
 
+/// <summary>A number the compact overlay can show.</summary>
+public enum OverlayField
+{
+    Power, Target, Cadence, Speed, HeartRate, Gear, Grade, Distance, RideTime, AvgPower, WorkKj, AvgHeartRate, MaxHeartRate,
+}
+
 /// <summary>What a Click button does. Up/Down are context-sensitive: ERG watts in ERG, gears otherwise.</summary>
 public enum ClickAction { None, Up, Down, PauseResume, SkipStep, ToggleCompact }
 
@@ -39,6 +45,12 @@ public sealed class AppSettings
     /// <summary>Background opacity of the compact overlay (0.15..1).</summary>
     public double OverlayOpacity { get; set; } = 0.7;
     public double OverlayScale { get; set; } = 1.0;
+
+    /// <summary>Overlay fields in display order: the first two are the big numbers, the rest go in the line below.</summary>
+    public List<OverlayField> OverlayFields { get; set; } = DefaultOverlayFields();
+
+    public static List<OverlayField> DefaultOverlayFields() =>
+        [OverlayField.Power, OverlayField.Target, OverlayField.Cadence, OverlayField.Gear, OverlayField.Speed, OverlayField.HeartRate];
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     public bool StartCompact { get; set; }
