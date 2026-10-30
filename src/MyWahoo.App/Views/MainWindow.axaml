@@ -7,6 +7,7 @@
         x:Class="MyWahoo.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="MyWahoo · KICKR control"
+        Icon="avares://MyWahoo.App/Assets/app.ico"
         Width="1200" Height="780" MinWidth="1120" MinHeight="620"
         Background="{StaticResource BgBrush}"
         DragDrop.AllowDrop="True">
@@ -17,13 +18,18 @@
             BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto">
         <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <TextBlock Text="MyWahoo" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" />
-          <Border Classes="pill" Background="{Binding ModeBrush}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Image Source="avares://MyWahoo.App/Assets/logo-64.png" Width="26" Height="26" VerticalAlignment="Center" />
+            <TextBlock Text="MyWahoo" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" />
+          </StackPanel>
+          <Border Classes="pill" Background="{Binding ModeBrush}" IsVisible="{Binding !IsWorkoutMode}">
             <TextBlock Text="{Binding ModeLabel}" FontSize="11" FontWeight="Bold" Foreground="#0B0D12" />
           </Border>
         </StackPanel>
 
-        <Border Grid.Column="1" Margin="20,0,0,0" Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="4">
+        <!-- Riding on your own: how the trainer behaves -->
+        <Border Grid.Column="1" Margin="20,0,0,0" Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="4"
+                IsVisible="{Binding !IsWorkoutMode}">
           <StackPanel Orientation="Horizontal" Spacing="4">
             <Button Classes="mode" Classes.active="{Binding IsErgMode}" Content="ERG"
                     Command="{Binding SetModeCommand}" CommandParameter="Erg"
@@ -34,13 +40,27 @@
             <Button Classes="mode" Classes.active="{Binding IsFreeMode}" Content="Free"
                     Command="{Binding SetModeCommand}" CommandParameter="Free"
                     ToolTip.Tip="Flat road, you just shift gears" />
-            <Button Classes="mode" Classes.active="{Binding IsWorkoutMode}" Content="Workout"
-                    IsEnabled="{Binding HasActiveWorkout}"
-                    Command="{Binding SetModeCommand}" CommandParameter="Workout" />
           </StackPanel>
         </Border>
 
-        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <!-- During a workout the workout drives the trainer: show it instead of the mode switch -->
+        <Border Grid.Column="1" Margin="14,0,8,0" Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="12,4,4,4"
+                BorderBrush="{Binding ModeBrush}" BorderThickness="1" IsVisible="{Binding IsWorkoutMode}"
+                ToolTip.Tip="{Binding ModeLabel}">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <PathIcon Data="{StaticResource IconPlay}" Width="11" Height="11" Foreground="{Binding ModeBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding WorkoutBannerText}" FontWeight="SemiBold" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" MaxWidth="280" />
+            <Button Command="{Binding StopWorkoutCommand}" Padding="10,4" ToolTip.Tip="Stop the workout and go back to riding on your own (the ride keeps recording)">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{StaticResource IconStop}" Width="10" Height="10" />
+                <TextBlock Text="End workout" FontWeight="SemiBold" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
           <!-- Device chips: green = connected, orange = connecting / Click v2 "−" locked, grey = not connected -->
           <Border Classes="chip" ToolTip.Tip="{Binding TrainerStatus}">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -70,10 +90,10 @@
               <TextBlock Text="Start ride" Foreground="White" FontWeight="SemiBold" />
             </StackPanel>
           </Button>
-          <Border IsVisible="{Binding IsRideActive}" Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="10,2,4,2" Margin="8,0,0,0">
+          <Border IsVisible="{Binding IsRideActive}" Background="{StaticResource Panel2Brush}" CornerRadius="10" Padding="10,2,4,2" Margin="4,0,0,0"
+                  ToolTip.Tip="Recording">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Ellipse Width="9" Height="9" Fill="#E5484D" IsVisible="{Binding IsRecording}" VerticalAlignment="Center" />
-              <TextBlock Text="REC" FontSize="11" FontWeight="Bold" Foreground="#E5484D" IsVisible="{Binding IsRecording}" VerticalAlignment="Center" />
               <TextBlock Text="PAUSED" FontSize="11" FontWeight="Bold" Foreground="{StaticResource WarnBrush}" IsVisible="{Binding IsRidePaused}" VerticalAlignment="Center" />
               <TextBlock Text="{Binding RideTimeText}" FontWeight="SemiBold" FontFeatures="+tnum" VerticalAlignment="Center" MinWidth="44" />
               <Button Classes="icon" Command="{Binding TogglePauseCommand}" ToolTip.Tip="Pause / resume (Space)">

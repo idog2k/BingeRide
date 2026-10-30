@@ -48,6 +48,8 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 - Time, distance, kJ, power and heart-rate totals only count while recording. They pause on **❚❚** and auto-pause when you stop pedalling.
 - **Finish** saves the ride to `Documents\MyWahoo\Rides` as a `.fit` file plus a summary, listed in the *Rides* tab. Upload the file at strava.com/upload, in Garmin Connect (Import data) or at intervals.icu.
 - Starting a workout starts recording automatically.
+
+**Workouts** start from the *Workouts* panel (or "Start now" when Claude delivers one). While a workout runs, it drives the trainer: the ERG / Slope / Free switch is replaced by a banner with the workout's name and step, and **End workout** returns you to your previous mode. The ride keeps recording.
 - Closing the app saves an unfinished ride. Rides under a minute are discarded.
 - If your Garmin also records the session, for example with *Broadcast During Activity*, you get two activities. Keep one.
 
@@ -86,6 +88,7 @@ src/MyWahoo.Workouts   importers: json, zwo, erg/mrc, intervals.icu, fit, gpx/tc
 src/MyWahoo.App        Avalonia UI: main window, overlay, workout chart (platform-neutral)
 src/MyWahoo.Windows    WinRT Bluetooth, click-through/topmost/hotkeys, exe entry point
 tests/                 xunit; App.Tests renders the UI headlessly into ./screenshots
+tools/IconGen          regenerates src/MyWahoo.App/Assets (app.ico + logos): dotnet run --project tools/IconGen -- src/MyWahoo.App/Assets
 skills/                the Claude skill
 docs/                  workout format, protocol notes and sources
 ```

@@ -13,6 +13,9 @@
     <ProjectReference Include="../MyWahoo.Workouts/MyWahoo.Workouts.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Example workouts copied into a brand-new library folder on first run. -->
     <EmbeddedResource Include="../../samples/workouts/*" LogicalName="samples/%(Filename)%(Extension)" />
   </ItemGroup>

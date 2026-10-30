@@ -5,6 +5,7 @@
         x:Class="MyWahoo.App.Views.OverlayWindow"
         x:DataType="vm:MainViewModel"
         Title="MyWahoo overlay"
+        Icon="avares://MyWahoo.App/Assets/app.ico"
         WindowDecorations="None"
         Topmost="True"
         CanResize="False"
@@ -19,6 +20,9 @@
     <Style Selector="Button.icon PathIcon">
       <Setter Property="Width" Value="12" />
       <Setter Property="Height" Value="12" />
+    </Style>
+    <Style Selector="Button.icon.on">
+      <Setter Property="Background" Value="#3BA7FF" />
     </Style>
   </Window.Styles>
   <LayoutTransformControl>
@@ -56,7 +60,7 @@
             <Button Classes="icon" Command="{Binding OpacityUpCommand}" ToolTip.Tip="Less transparent">
               <PathIcon Data="{StaticResource IconSun}" />
             </Button>
-            <Button Classes="icon" Command="{Binding ToggleClickThroughCommand}"
+            <Button Classes="icon" Classes.on="{Binding ClickThrough}" Command="{Binding ToggleClickThroughCommand}"
                     ToolTip.Tip="Let mouse clicks pass through to Netflix (Ctrl+Alt+L turns it back off)">
               <PathIcon Data="{StaticResource IconPointer}" />
             </Button>
@@ -87,8 +91,12 @@
           <TextBlock FontSize="15" FontFeatures="+tnum"><Run Text="♥ " Foreground="#FF4D6A" /><Run Text="{Binding HeartRateText}" FontWeight="SemiBold" /></TextBlock>
         </StackPanel>
 
-        <TextBlock Grid.Row="3" Text="⚠ Trainer not connected: pedal to wake the KICKR" FontSize="12" FontWeight="SemiBold"
-                   Foreground="#FFB84D" IsVisible="{Binding !TrainerConnected}" Margin="0,0,0,2" />
+        <StackPanel Grid.Row="3" Margin="0,0,0,2">
+          <TextBlock Text="⚠ Trainer not connected: pedal to wake the KICKR" FontSize="12" FontWeight="SemiBold"
+                     Foreground="#FFB84D" IsVisible="{Binding !TrainerConnected}" />
+          <TextBlock Text="Mouse passes through · Ctrl+Alt+L to unlock" FontSize="12" FontWeight="SemiBold"
+                     Foreground="#3BA7FF" IsVisible="{Binding ClickThrough}" />
+        </StackPanel>
 
         <!-- Workout step (or ride summary) -->
         <Grid Grid.Row="4" ColumnDefinitions="*,Auto">

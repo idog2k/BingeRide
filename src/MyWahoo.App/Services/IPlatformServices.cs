@@ -20,6 +20,12 @@ public interface IPlatformServices
     IDisposable? RegisterGlobalHotkeys(Action toggleCompact, Action toggleClickThrough);
 
     void OpenFolder(string path);
+
+    /// <summary>
+    /// Called when the app is launched a second time (e.g. from the "MyWahoo Overlay" shortcut while it's running):
+    /// the running copy shows its overlay (true) or full window (false) instead of a second copy starting.
+    /// </summary>
+    IDisposable? ListenForActivation(Action<bool> show);
 }
 
 public sealed class DefaultPlatformServices : IPlatformServices
@@ -28,6 +34,7 @@ public sealed class DefaultPlatformServices : IPlatformServices
     public void SetClickThrough(Window window, bool enabled) { }
     public void KeepOnTop(Window window) { }
     public IDisposable? RegisterGlobalHotkeys(Action toggleCompact, Action toggleClickThrough) => null;
+    public IDisposable? ListenForActivation(Action<bool> show) => null;
 
     public void OpenFolder(string path)
     {

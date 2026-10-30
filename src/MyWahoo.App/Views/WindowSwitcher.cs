@@ -21,6 +21,7 @@ public sealed class WindowSwitcher
     private readonly IClassicDesktopStyleApplicationLifetime _desktop;
     private readonly DispatcherTimer _keepOnTop;
     private readonly IDisposable? _hotkeys;
+    private readonly IDisposable? _activation;
     private bool _exiting;
 
     public WindowSwitcher(MainViewModel vm, MainWindow main, OverlayWindow overlay, IPlatformServices platform, IClassicDesktopStyleApplicationLifetime desktop)
@@ -45,6 +46,17 @@ public sealed class WindowSwitcher
         _hotkeys = _platform.RegisterGlobalHotkeys(
             () => Dispatcher.UIThread.Post(() => _vm.IsCompact = !_vm.IsCompact),
             () => Dispatcher.UIThread.Post(() => _vm.ClickThrough = !_vm.ClickThrough));
+        _activation = _platform.ListenForActivation(overlay => Dispatcher.UIThread.Post(() =>
+        {
+            if (_vm.IsCompact == overlay)
+            {
+                // Already in that mode: just bring it forward (and make sure the overlay is clickable).
+                _vm.ClickThrough = false;
+                if (overlay) _overlay.Activate();
+                else _main.Activate();
+            }
+            _vm.IsCompact = overlay;
+        }));
     }
 
     public void ShowInitial(bool compact)
@@ -69,6 +81,8 @@ public sealed class WindowSwitcher
 
     private void ShowOverlay()
     {
+        // Always open clickable: click-through is switched on deliberately, never left on from last time.
+        _vm.ClickThrough = false;
         if (_vm.Settings.OverlayX is { } x && _vm.Settings.OverlayY is { } y)
         {
             _overlay.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -89,6 +103,7 @@ public sealed class WindowSwitcher
     private void ShowMain()
     {
         _keepOnTop.Stop();
+        _vm.ClickThrough = false;
         _main.Show();
         _main.Activate();
         _overlay.Hide();
@@ -100,6 +115,7 @@ public sealed class WindowSwitcher
         _exiting = true;
         _keepOnTop.Stop();
         _hotkeys?.Dispose();
+        _activation?.Dispose();
         _vm.SaveSettingsNow(); // overlay position and anything changed in the last second
         await _vm.DisposeAsync();
         _desktop.Shutdown();

@@ -39,7 +39,6 @@ public sealed class AppSettings
     /// <summary>Background opacity of the compact overlay (0.15..1).</summary>
     public double OverlayOpacity { get; set; } = 0.7;
     public double OverlayScale { get; set; } = 1.0;
-    public bool OverlayClickThrough { get; set; }
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     public bool StartCompact { get; set; }

@@ -133,6 +133,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private string _pauseLabel = "Pause";
     [ObservableProperty] private string? _cueText;
     [ObservableProperty] private string _compactLine = "";
+    [ObservableProperty] private string _workoutBannerText = "";
 
     // ---- library -----------------------------------------------------------------------------
     [ObservableProperty] private LibraryEntry? _selectedWorkout;
@@ -193,12 +194,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SelectedSummary = value?.Workout is { } w ? Summarize(w) : "";
     }
 
-    partial void OnClickThroughChanged(bool value)
-    {
-        Settings.OverlayClickThrough = value;
-        SaveSettingsSoon();
-    }
-
     /// <summary>Loads the library, starts Bluetooth and the 4 Hz ride loop.</summary>
     public void Start(bool watchLibrary = true)
     {
@@ -248,7 +243,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             AddLog("Bluetooth LE is not available; use the demo trainer to try the app.");
         }
-        ClickThrough = Settings.OverlayClickThrough;
         RefreshRides();
         SyncDevices();
         _tick.Start();
@@ -311,6 +305,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             WorkoutTimeText = player.Workout.HasDistanceSteps
                 ? $"{Fmt.Duration(player.ElapsedSec)} · {Fmt.Distance(r.DistanceM)}"
                 : $"{Fmt.Duration(player.ElapsedSec)} / {Fmt.Duration(player.Workout.TotalDurationSec)}";
+            WorkoutBannerText = player.IsFinished
+                ? $"✓ {player.Workout.Name} complete"
+                : $"{player.Workout.Name} · step {player.StepIndex + 1}/{player.Workout.Steps.Count}";
             if (player.CurrentStep is { } step)
             {
                 StepTitle = Fmt.StepTitle(step, Settings.Ftp);

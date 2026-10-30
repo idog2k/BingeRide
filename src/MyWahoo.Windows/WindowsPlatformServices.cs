@@ -67,6 +67,8 @@ internal sealed class WindowsPlatformServices(bool bluetooth = true) : IPlatform
     public IDisposable? RegisterGlobalHotkeys(Action toggleCompact, Action toggleClickThrough) =>
         new GlobalHotkeys(toggleCompact, toggleClickThrough);
 
+    public IDisposable? ListenForActivation(Action<bool> show) => SingleInstance.Listen(show);
+
     public void OpenFolder(string path)
     {
         Directory.CreateDirectory(path);

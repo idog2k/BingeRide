@@ -10,6 +10,8 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (!SingleInstance.Claim(wantOverlay: args.Contains("--overlay"))) return;
+
         AppDomain.CurrentDomain.UnhandledException += (_, e) => WriteCrash(e.ExceptionObject);
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
