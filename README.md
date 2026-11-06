@@ -6,6 +6,14 @@ A small Windows app for riding a smart bike trainer while you watch something. I
 
 BingeRide was built for the **Wahoo KICKR CORE 2 with Zwift Cog**. It can also control other Bluetooth smart trainers. See [Trainers](#trainers).
 
+![The overlay panel during a workout: power, target, cadence, gear, speed and heart rate, the current step, the time left in the step, and a chart of the workout](docs/images/overlay.png)
+
+*Overlay mode. On your screen, the background of the panel is see-through. The picture shows it as black.*
+
+![The main window during the same workout: the live numbers, the workout chart with food markers, and the workout library](docs/images/main-window.png)
+
+*The main window. Both pictures show a simulated ride with the demo trainer.*
+
 **Modes**
 - **ERG:** the trainer holds the target watts.
 - **Slope:** a simulated climb, with virtual gears.
@@ -23,6 +31,22 @@ BingeRide was built for the **Wahoo KICKR CORE 2 with Zwift Cog**. It can also c
 - **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
+
+## Install
+
+BingeRide runs on 64-bit Windows 10 version 2004 or newer, and on Windows 11. Your PC needs Bluetooth LE to connect to a trainer. You do not need admin rights, and you do not need to install .NET.
+
+1. Download [BingeRide-Setup.exe](https://github.com/idog2k/BingeRide/releases/latest/download/BingeRide-Setup.exe).
+2. Run the file. If Windows shows "Windows protected your PC", press **More info**, then **Run anyway**. Windows shows this message because the app has no code signature.
+3. Follow the steps in the installer. One step lets you add desktop shortcuts.
+4. Start **BingeRide** from the Start menu. The **BingeRide Overlay** shortcut starts the app in overlay mode.
+5. Follow the [first ride checklist](#first-ride-checklist).
+
+To update BingeRide, close it, then do steps 1 to 3 again. Your rides, workouts and settings stay.
+
+To remove BingeRide, open *Settings → Apps → Installed apps* in Windows, then uninstall it. Your data stays in `Documents\BingeRide`, `%APPDATA%\BingeRide` and `%LOCALAPPDATA%\BingeRide`. To remove your data too, delete these folders.
+
+To use BingeRide without the installer, download `BingeRide.exe` from the [latest release](https://github.com/idog2k/BingeRide/releases/latest). Put the file in any folder and start it. This method adds no shortcuts and no uninstall entry.
 
 ## Overlay mode
 
@@ -73,7 +97,7 @@ Limits:
 
 ## Run it
 
-`%LOCALAPPDATA%\Programs\BingeRide\BingeRide.exe` is a single file with no installer. To rebuild it from WSL, run `scripts/publish-windows.sh`.
+The installer puts `BingeRide.exe` in `%LOCALAPPDATA%\Programs\BingeRide`. To build the file from source and copy it to that folder, run `scripts/publish-windows.sh` in WSL.
 
 BingeRide used to be called **MyWahoo**. On its first start it renames the old `MyWahoo` folders in Documents, `%APPDATA%` and `%LOCALAPPDATA%`, so rides, workouts, settings and paired phones carry over. Close the old MyWahoo first.
 
@@ -82,7 +106,8 @@ BingeRide used to be called **MyWahoo**. On its first start it renames the old `
 | `--overlay` | Start in the compact overlay. |
 | `--no-bluetooth` | UI only; use *Devices → Demo trainer* to try it out. |
 
-**First ride checklist**
+### First ride checklist
+
 1. Update the trainer firmware with the app from its maker. On a KICKR CORE 2, use the Wahoo app. Virtual shifting needs 2.2.44 / 3.2.44 or newer.
 2. **Close Zwift, the Wahoo app and anything else using the trainer or the Click.** Each device obeys one app at a time.
 3. Start BingeRide and pedal so the trainer wakes up.
@@ -159,12 +184,17 @@ src/BingeRide.Workouts   importers: json, zwo, erg/mrc, intervals.icu, fit, gpx/
 src/BingeRide.App        Avalonia UI: main window, overlay, workout chart (platform-neutral)
 src/BingeRide.Windows    WinRT Bluetooth, click-through/topmost/hotkeys, exe entry point
 tests/                 xunit; App.Tests renders the UI headlessly into ./screenshots
+installer/             Inno Setup script for BingeRide-Setup.exe
 tools/IconGen          regenerates the icons: dotnet run --project tools/IconGen -- src/BingeRide.App/Assets src/BingeRide.App/Web
 skills/                the Claude skill
 docs/                  workout format, protocol notes and sources
 ```
 
 Run `dotnet test` from WSL to run everything. Plain Linux works too; only the Windows head needs `EnableWindowsTargeting`.
+
+To publish a release, push a version tag: `git tag v0.1.0 && git push origin v0.1.0`. The workflow in `.github/workflows/release.yml` runs the tests, builds `BingeRide.exe` and `BingeRide-Setup.exe`, and attaches both files to a new GitHub release.
+
+To build only the installer, run `scripts/publish-windows.sh` in WSL. Then, in Windows PowerShell, go to the repository folder and run `powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1 -Version 0.1.0`. The script downloads Inno Setup from NuGet and writes `dist\BingeRide-Setup.exe`.
 
 ## License
 
