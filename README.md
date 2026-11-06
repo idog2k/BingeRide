@@ -1,6 +1,10 @@
 # BingeRide
 
-A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while watching Netflix.
+A small Windows app for riding a smart bike trainer while you watch something. It works over Netflix, any other streaming service, a video player, or any other window on your PC.
+
+**Overlay mode** is the main feature. A small see-through panel stays on top of your video and shows your power, target and workout. See [Overlay mode](#overlay-mode).
+
+BingeRide was built for the **Wahoo KICKR CORE 2 with Zwift Cog**. It can also control other Bluetooth smart trainers. See [Trainers](#trainers).
 
 **Modes**
 - **ERG:** the trainer holds the target watts.
@@ -14,12 +18,58 @@ A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while wat
 
 **Control**
 - A **Zwift Click** shifts gears, or nudges watts in ERG.
-- A compact **always-on-top, see-through overlay** sits over the video.
 - **Heart rate** comes from any Bluetooth strap, or a watch broadcasting HR (e.g. a Garmin Forerunner 970). It shows live, with average and max.
 - **Food burned 🍕:** ride energy turned into food (kcal ≈ kJ of work). Workouts show 🍎🍌🍪🍕🍔 on the chart where you'll burn each one. Free rides pop up "🍕 Slice of pizza burned!" as you go. Rides list them, the overlay can show them, and *Settings* turns it off.
 - **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
+
+## Overlay mode
+
+Overlay mode is the main way to use BingeRide during a ride. The full window hides, and a small see-through panel stays on top of your screen. Your numbers sit over the video, so you do not have to leave it.
+
+BingeRide does not connect to the video app, so it does not matter what you watch. The panel stays on top of other windows, including full-screen video in a browser or a player. An app that takes exclusive control of the screen, such as some full-screen games, can still cover it.
+
+The panel shows:
+- The fields you choose, in the order you choose. The defaults are power, target, cadence, gear, speed and heart rate.
+- The ride time and the mode.
+- In a workout: the step, the time left in the step, the next step, a chart of the workout, and the cues.
+- A warning if the trainer is not connected.
+
+| Control | Action |
+|---|---|
+| **Overlay** button / `Ctrl+Alt+K` | Switch between the full window and the overlay. `Esc` on the overlay also goes back to the full window. |
+| `Ctrl+Alt+L` | Turn mouse click-through on or off. When it is on, your clicks go to the video under the panel. |
+| Drag the panel | Move it. The app remembers the position. |
+| Overlay `−` / ☀ | Make the background more / less transparent. |
+| Overlay sliders icon | Choose and order the fields: power, target, cadence, speed, heart rate, gear, grade, distance, ride time, avg power, kJ, avg/max HR, calories, food, famous trip. The first two are big. Also in *Settings*. |
+| Overlay ✕ | Quit BingeRide. |
+
+`Ctrl+Alt+K` and `Ctrl+Alt+L` work from any app. Other keys go to the video while it has focus. To change gears or watts without leaving the video, use a Zwift Click or the [iPhone remote](#iphone-remote).
+
+*Settings → Overlay* sets the size and the background opacity. It can also start the app in overlay mode every time. The `--overlay` option does the same for one start.
+
+## Trainers
+
+BingeRide was built for the Wahoo KICKR CORE 2 with Zwift Cog. It can also control other Bluetooth smart trainers.
+
+When BingeRide connects to a trainer, it tries Zwift's protocol first. If the trainer does not answer, BingeRide uses FTMS (Fitness Machine Service, the standard Bluetooth protocol for trainers). The header shows which protocol is in use.
+
+| Header shows | Trainer | Gears |
+|---|---|---|
+| `· virtual shifting` | A KICKR CORE 2 with Zwift Cog, or another trainer that answers Zwift's protocol | The trainer does the virtual shifting. |
+| `· FTMS` | Any other Bluetooth trainer that supports FTMS | The app emulates the gears by changing the simulated grade and resistance. |
+
+All modes, the overlay, the Zwift Click and ride recording work with both protocols.
+
+To use a trainer that is not a KICKR:
+1. Pedal so that the trainer wakes up.
+2. Open *Devices*, then press **Connect** next to your trainer under *Nearby*. BingeRide connects automatically only to names that start with `KICKR`. After you press **Connect**, it remembers your trainer and connects to it at each start.
+3. If the header shows `· FTMS`, open *Settings → Trainer (advanced)*. Set *Chainring* and *Cog* to the gear that your chain is in. The emulated gears use this ratio.
+
+Limits:
+- BingeRide uses Bluetooth only. A trainer that does not offer FTMS over Bluetooth, for example one with only ANT+, does not appear under *Nearby*.
+- Trainers other than the KICKR are not tested on real hardware. If one does not work, read the Bluetooth trace in `%LOCALAPPDATA%\BingeRide\logs\ble-*.log`.
 
 ## Run it
 
@@ -33,14 +83,16 @@ BingeRide used to be called **MyWahoo**. On its first start it renames the old `
 | `--no-bluetooth` | UI only; use *Devices → Demo trainer* to try it out. |
 
 **First ride checklist**
-1. Update the KICKR CORE 2 firmware in the Wahoo app. Virtual shifting needs 2.2.44 / 3.2.44 or newer.
+1. Update the trainer firmware with the app from its maker. On a KICKR CORE 2, use the Wahoo app. Virtual shifting needs 2.2.44 / 3.2.44 or newer.
 2. **Close Zwift, the Wahoo app and anything else using the trainer or the Click.** Each device obeys one app at a time.
-3. Start BingeRide and pedal so the KICKR wakes up.
-   - It connects automatically. The header shows `KICKR CORE … · virtual shifting`, or `· FTMS` if the trainer refused Zwift's protocol.
+3. Start BingeRide and pedal so the trainer wakes up.
+   - A KICKR connects automatically. For any other trainer, press **Connect** in *Devices* the first time. See [Trainers](#trainers).
+   - The header shows `KICKR CORE … · virtual shifting`, or `· FTMS` if the trainer refused Zwift's protocol.
    - Press any Click button so it advertises.
    - On the Garmin, hold **LIGHT** → **Broadcast Heart Rate**. Or enable *Broadcast During Activity* and start an Indoor Bike activity. The app connects to the first heart-rate sensor it sees and remembers it; *Devices → Connect* switches to another one.
 4. In **Free**, shift through a few gears and check that the resistance changes. Then try **ERG** at 120 W.
-5. If something misbehaves, the Bluetooth trace is in `%LOCALAPPDATA%\BingeRide\logs\ble-*.log`, with every byte sent and received. *Settings → Trainer (advanced)* can force FTMS or send ERG over FTMS.
+5. Start your video and press `Ctrl+Alt+K` to switch to the overlay.
+6. If something misbehaves, the Bluetooth trace is in `%LOCALAPPDATA%\BingeRide\logs\ble-*.log`, with every byte sent and received. *Settings → Trainer (advanced)* can force FTMS or send ERG over FTMS.
 
 ## Riding
 
@@ -60,10 +112,8 @@ BingeRide used to be called **MyWahoo**. On its first start it renames the old `
 |---|---|
 | Click `+` / `−` (and **B** = down) | Gears in Slope/Free and in slope/free workout steps; watts in ERG; intensity ±2 % in ERG workout steps |
 | Keyboard `+`/`−`/↑/↓, Space | Same, plus start / pause / resume the ride |
-| **Overlay** button / `Ctrl+Alt+K` | Switch between the full window and the compact overlay |
-| `Ctrl+Alt+L` | Mouse click-through on the overlay (so you can click Netflix underneath) |
-| Overlay `−` / ☀ | Background more / less transparent; drag anywhere to move |
-| Overlay sliders icon | Choose and order the overlay's fields: power, target, cadence, speed, heart rate, gear, grade, distance, ride time, avg power, kJ, avg/max HR. The first two are big. Also in *Settings*. |
+
+The overlay controls are in [Overlay mode](#overlay-mode).
 
 **Zwift Click v2.** The "−" puck stops sending presses about a minute after connecting, unless the Zwift app has unlocked it in the last ~24 h. This is Zwift's lock, and no third-party app can undo it. That is why **B** on the "+" puck also shifts down. *Settings* has an option to keep rebooting the "−" puck instead, which leaves 2–3 s gaps.
 
