@@ -1,6 +1,6 @@
 using SkiaSharp;
 
-// Draws the MyWahoo icon (a cog for the Zwift Cog + a lightning bolt for watts) and writes
+// Draws the BingeRide icon (a cog for the Zwift Cog + a lightning bolt for watts) and writes
 // app.ico (16–256 px) plus PNGs. Small sizes use a simplified bolt-only design that stays legible.
 var outDir = args.Length > 0 ? args[0] : ".";
 Directory.CreateDirectory(outDir);

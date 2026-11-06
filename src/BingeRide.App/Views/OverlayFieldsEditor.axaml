@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BingeRide.App.ViewModels"
+             x:Class="BingeRide.App.Views.OverlayFieldsEditor"
+             x:DataType="vm:MainViewModel">
+  <StackPanel Spacing="4">
+    <TextBlock Classes="label" Text="OVERLAY FIELDS" />
+    <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap"
+               Text="The first two checked fields are the big numbers; the rest go in the line below. Arrows reorder." />
+    <ItemsControl ItemsSource="{Binding OverlayFieldOptions}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:OverlayFieldOption">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" MinHeight="28" Padding="6,0" />
+            <Button Grid.Column="1" Classes="icon" ToolTip.Tip="Move up"
+                    Command="{ReflectionBinding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}">
+              <PathIcon Data="{StaticResource IconChevronUp}" />
+            </Button>
+            <Button Grid.Column="2" Classes="icon" ToolTip.Tip="Move down"
+                    Command="{ReflectionBinding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}">
+              <PathIcon Data="{StaticResource IconChevronDown}" />
+            </Button>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <Button Content="Reset to default" Command="{Binding ResetOverlayFieldsCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
+  </StackPanel>
+</UserControl>

@@ -1,4 +1,4 @@
-# MyWahoo
+# BingeRide
 
 A small Windows app for riding a **Wahoo KICKR CORE 2 with Zwift Cog** while watching Netflix.
 
@@ -23,7 +23,9 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 
 ## Run it
 
-`%LOCALAPPDATA%\Programs\MyWahoo\MyWahoo.exe` is a single file with no installer. To rebuild it from WSL, run `scripts/publish-windows.sh`.
+`%LOCALAPPDATA%\Programs\BingeRide\BingeRide.exe` is a single file with no installer. To rebuild it from WSL, run `scripts/publish-windows.sh`.
+
+BingeRide used to be called **MyWahoo**. On its first start it renames the old `MyWahoo` folders in Documents, `%APPDATA%` and `%LOCALAPPDATA%`, so rides, workouts, settings and paired phones carry over. Close the old MyWahoo first.
 
 | Option | What it does |
 |---|---|
@@ -33,12 +35,12 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 **First ride checklist**
 1. Update the KICKR CORE 2 firmware in the Wahoo app. Virtual shifting needs 2.2.44 / 3.2.44 or newer.
 2. **Close Zwift, the Wahoo app and anything else using the trainer or the Click.** Each device obeys one app at a time.
-3. Start MyWahoo and pedal so the KICKR wakes up.
+3. Start BingeRide and pedal so the KICKR wakes up.
    - It connects automatically. The header shows `KICKR CORE … · virtual shifting`, or `· FTMS` if the trainer refused Zwift's protocol.
    - Press any Click button so it advertises.
    - On the Garmin, hold **LIGHT** → **Broadcast Heart Rate**. Or enable *Broadcast During Activity* and start an Indoor Bike activity. The app connects to the first heart-rate sensor it sees and remembers it; *Devices → Connect* switches to another one.
 4. In **Free**, shift through a few gears and check that the resistance changes. Then try **ERG** at 120 W.
-5. If something misbehaves, the Bluetooth trace is in `%LOCALAPPDATA%\MyWahoo\logs\ble-*.log`, with every byte sent and received. *Settings → Trainer (advanced)* can force FTMS or send ERG over FTMS.
+5. If something misbehaves, the Bluetooth trace is in `%LOCALAPPDATA%\BingeRide\logs\ble-*.log`, with every byte sent and received. *Settings → Trainer (advanced)* can force FTMS or send ERG over FTMS.
 
 ## Riding
 
@@ -47,7 +49,7 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 **Recording a ride**
 - Press **Start ride**, the red button, or Space.
 - Time, distance, kJ, power and heart-rate totals only count while recording. They pause on **❚❚** and auto-pause when you stop pedalling.
-- **Finish** saves the ride to `Documents\MyWahoo\Rides` as a `.fit` file plus a summary, listed in the *Rides* tab. Upload the file at strava.com/upload, in Garmin Connect (Import data) or at intervals.icu.
+- **Finish** saves the ride to `Documents\BingeRide\Rides` as a `.fit` file plus a summary, listed in the *Rides* tab. Upload the file at strava.com/upload, in Garmin Connect (Import data) or at intervals.icu.
 - Starting a workout starts recording automatically.
 
 **Workouts** start from the *Workouts* panel (or "Start now" when Claude delivers one). While a workout runs, it drives the trainer: the ERG / Slope / Free switch is replaced by a banner with the workout's name and step, and **End workout** returns you to your previous mode. The ride keeps recording.
@@ -65,14 +67,14 @@ Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift ac
 
 **Zwift Click v2.** The "−" puck stops sending presses about a minute after connecting, unless the Zwift app has unlocked it in the last ~24 h. This is Zwift's lock, and no third-party app can undo it. That is why **B** on the "+" puck also shifts down. *Settings* has an option to keep rebooting the "−" puck instead, which leaves 2–3 s gaps.
 
-Workouts pause automatically when you stop pedalling. Button mappings, FTP and steps are in *Settings*, saved to `%APPDATA%\MyWahoo\settings.json`.
+Workouts pause automatically when you stop pedalling. Button mappings, FTP and steps are in *Settings*, saved to `%APPDATA%\BingeRide\settings.json`.
 
 ## iPhone remote
 
 The PC app keeps talking Bluetooth to the trainer. Your phone becomes a live dashboard and remote over home Wi-Fi: power, heart rate, food, workout step and time left, plus gears/watts ±, modes, start, pause and finish a ride, starting workouts, and ride history.
 
 **Pairing (one time)**
-1. *Devices → 📱 Pair a phone*. The first time, Windows Firewall asks: allow MyWahoo on **private** networks.
+1. *Devices → 📱 Pair a phone*. The first time, Windows Firewall asks: allow BingeRide on **private** networks.
 2. Scan the QR with the iPhone Camera, then tap the link.
 3. In Safari: Share → **Add to Home Screen**.
 
@@ -86,15 +88,15 @@ The page keeps the phone awake after your first tap.
 
 ## Workouts from Claude
 
-The app watches `Documents\MyWahoo\Workouts`. A file that appears there shows up as **"New workout: … Start now"**.
+The app watches `Documents\BingeRide\Workouts`. A file that appears there shows up as **"New workout: … Start now"**.
 
 **Claude Code (this machine):**
 - Run `scripts/install-skill.sh` once.
-- Then just ask, e.g. *"give me a 60 minute VO2 workout, my FTP is 140"*. Claude writes the JSON, checks it with `skills/mywahoo-workout/scripts/check_workout.py`, and delivers it into the folder.
+- Then just ask, e.g. *"give me a 60 minute VO2 workout, my FTP is 140"*. Claude writes the JSON, checks it with `skills/bingeride-workout/scripts/check_workout.py`, and delivers it into the folder.
 
 **claude.ai:**
-- Upload `dist/mywahoo-workout.zip` (built by `scripts/install-skill.sh --zip`) under Settings → Capabilities → Skills.
-- Or paste the contents of `skills/mywahoo-workout/SKILL.md` into a Project's instructions.
+- Upload `dist/bingeride-workout.zip` (built by `scripts/install-skill.sh --zip`) under Settings → Capabilities → Skills.
+- Or paste the contents of `skills/bingeride-workout/SKILL.md` into a Project's instructions.
 - Copy Claude's answer and press **Paste** (or Ctrl+V) in the app. It finds the workout inside the text.
 
 **Other files:** use **Import**, drag them onto the window, or drop them into the folder. The format is documented in [`docs/workout-format.md`](docs/workout-format.md).
@@ -102,12 +104,12 @@ The app watches `Documents\MyWahoo\Workouts`. A file that appears there shows up
 ## Layout
 
 ```
-src/MyWahoo.Core       protocols (Zwift trainer, FTMS, Zwift Click), devices, ride controller, workout player
-src/MyWahoo.Workouts   importers: json, zwo, erg/mrc, intervals.icu, fit, gpx/tcx, paste extraction, stats
-src/MyWahoo.App        Avalonia UI: main window, overlay, workout chart (platform-neutral)
-src/MyWahoo.Windows    WinRT Bluetooth, click-through/topmost/hotkeys, exe entry point
+src/BingeRide.Core       protocols (Zwift trainer, FTMS, Zwift Click), devices, ride controller, workout player
+src/BingeRide.Workouts   importers: json, zwo, erg/mrc, intervals.icu, fit, gpx/tcx, paste extraction, stats
+src/BingeRide.App        Avalonia UI: main window, overlay, workout chart (platform-neutral)
+src/BingeRide.Windows    WinRT Bluetooth, click-through/topmost/hotkeys, exe entry point
 tests/                 xunit; App.Tests renders the UI headlessly into ./screenshots
-tools/IconGen          regenerates the icons: dotnet run --project tools/IconGen -- src/MyWahoo.App/Assets src/MyWahoo.App/Web
+tools/IconGen          regenerates the icons: dotnet run --project tools/IconGen -- src/BingeRide.App/Assets src/BingeRide.App/Web
 skills/                the Claude skill
 docs/                  workout format, protocol notes and sources
 ```

@@ -1,0 +1,141 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:BingeRide.App.ViewModels"
+        xmlns:c="using:BingeRide.App.Controls"
+        xmlns:v="using:BingeRide.App.Views"
+        x:Class="BingeRide.App.Views.OverlayWindow"
+        x:DataType="vm:MainViewModel"
+        Title="BingeRide overlay"
+        Icon="avares://BingeRide.App/Assets/app.ico"
+        WindowDecorations="None"
+        Topmost="True"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowStartupLocation="Manual">
+  <Window.Styles>
+    <Style Selector="Button.icon">
+      <Setter Property="Padding" Value="4" />
+    </Style>
+    <Style Selector="Button.icon PathIcon">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+    </Style>
+    <Style Selector="Button.icon.on">
+      <Setter Property="Background" Value="#3BA7FF" />
+    </Style>
+  </Window.Styles>
+  <LayoutTransformControl>
+    <LayoutTransformControl.LayoutTransform>
+      <ScaleTransform ScaleX="{Binding OverlayScale}" ScaleY="{Binding OverlayScale}" />
+    </LayoutTransformControl.LayoutTransform>
+
+    <Border x:Name="Panel" Background="{Binding OverlayBackground}" CornerRadius="14" Padding="14,6,8,10" Width="340">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+        <Grid.Effect>
+          <DropShadowEffect BlurRadius="4" OffsetX="0" OffsetY="1" Color="Black" Opacity="0.9" />
+        </Grid.Effect>
+
+        <!-- Mode + toolbar -->
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Ellipse Width="7" Height="7" Fill="#E5484D" IsVisible="{Binding IsRecording}" />
+            <TextBlock FontSize="11" FontWeight="Bold" Foreground="#E5484D" IsVisible="{Binding IsRecording}" FontFeatures="+tnum"
+                       Text="{Binding RideTimeText}" ToolTip.Tip="Recording" />
+            <TextBlock FontSize="11" FontWeight="Bold" Foreground="#FFB84D" IsVisible="{Binding IsRidePaused}" FontFeatures="+tnum">
+              <Run Text="❚❚ " /><Run Text="{Binding RideTimeText}" />
+            </TextBlock>
+            <TextBlock Text="{Binding ModeLabel}" FontSize="10" FontWeight="Bold" Foreground="{Binding ModeBrush}" LetterSpacing="1" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Opacity="0.7">
+            <Button Classes="icon" Command="{Binding TogglePauseCommand}" ToolTip.Tip="Start / pause / resume the ride (Space)">
+              <Panel>
+                <PathIcon Data="{StaticResource IconPlay}" IsVisible="{Binding !IsRecording}" />
+                <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding IsRecording}" />
+              </Panel>
+            </Button>
+            <Button Classes="icon" ToolTip.Tip="Choose the overlay's fields">
+              <PathIcon Data="{StaticResource IconSliders}" />
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedRight">
+                  <v:OverlayFieldsEditor Width="270" />
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+            <Button Classes="icon" Command="{Binding OpacityDownCommand}" ToolTip.Tip="More transparent">
+              <PathIcon Data="{StaticResource IconMinus}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding OpacityUpCommand}" ToolTip.Tip="Less transparent">
+              <PathIcon Data="{StaticResource IconSun}" />
+            </Button>
+            <Button Classes="icon" Classes.on="{Binding ClickThrough}" Command="{Binding ToggleClickThroughCommand}"
+                    ToolTip.Tip="Let mouse clicks pass through to Netflix (Ctrl+Alt+L turns it back off)">
+              <PathIcon Data="{StaticResource IconPointer}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding ToggleCompactCommand}" ToolTip.Tip="Full window (Ctrl+Alt+K)">
+              <PathIcon Data="{StaticResource IconExpand}" />
+            </Button>
+            <Button Classes="icon" Click="OnClose" ToolTip.Tip="Quit">
+              <PathIcon Data="{StaticResource IconClose}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <!-- Big numbers: the first two configured fields -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,-6,0,0">
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding HasOverlayBig1}">
+            <TextBlock Text="{Binding OverlayBig1.Value}" Foreground="{Binding OverlayBig1.Brush}" FontSize="42" FontWeight="Bold" FontFeatures="+tnum" />
+            <TextBlock Text="{Binding OverlayBig1.Unit}" FontSize="14" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="4,0,0,9" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" IsVisible="{Binding HasOverlayBig2}">
+            <TextBlock Text="{Binding OverlayBig2.Value}" Foreground="{Binding OverlayBig2.Brush}" FontSize="26" FontWeight="SemiBold" FontFeatures="+tnum" />
+            <TextBlock Text="{Binding OverlayBig2.Unit}" FontSize="12" Foreground="#B8C0D0" VerticalAlignment="Bottom" Margin="3,0,0,5" />
+          </StackPanel>
+        </Grid>
+
+        <!-- The rest of the configured fields -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding OverlaySmall}" Margin="0,-2,0,4">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:OverlayValue">
+              <TextBlock FontSize="15" FontFeatures="+tnum" Margin="0,0,14,0">
+                <Run Text="{Binding Value}" Foreground="{Binding Brush}" FontWeight="SemiBold" /><Run Text=" " /><Run Text="{Binding Unit}" Foreground="#B8C0D0" />
+              </TextBlock>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Grid.Row="3" Margin="0,0,0,2">
+          <TextBlock Text="⚠ Trainer not connected: pedal to wake the KICKR" FontSize="12" FontWeight="SemiBold"
+                     Foreground="#FFB84D" IsVisible="{Binding !TrainerConnected}" />
+          <TextBlock Text="Mouse passes through · Ctrl+Alt+L to unlock" FontSize="12" FontWeight="SemiBold"
+                     Foreground="#3BA7FF" IsVisible="{Binding ClickThrough}" />
+        </StackPanel>
+
+        <!-- Workout step (or ride summary) -->
+        <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
+          <TextBlock Text="{Binding CompactLine}" FontSize="15" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                     IsVisible="{Binding HasCompactLine}" />
+          <TextBlock Grid.Column="1" Text="{Binding StepRemainingText}" FontSize="18" FontWeight="Bold" FontFeatures="+tnum"
+                     Margin="8,0,0,0" IsVisible="{Binding HasActiveWorkout}" />
+        </Grid>
+        <TextBlock Grid.Row="5" Text="{Binding NextStepText}" FontSize="12" Foreground="#B8C0D0" TextTrimming="CharacterEllipsis"
+                   IsVisible="{Binding HasActiveWorkout}" />
+
+        <StackPanel Grid.Row="6" Spacing="6" Margin="0,6,0,0">
+          <c:WorkoutChart Height="40" IsVisible="{Binding HasActiveWorkout}"
+                          Workout="{Binding ActiveWorkout}" Ftp="{Binding Ftp}" Progress="{Binding WorkoutProgress}"
+                          FoodMarkers="{Binding ActiveFoodMarkers}" />
+          <Border IsVisible="{Binding HasCue}" Background="#CC1A2B45" CornerRadius="8" Padding="8,5">
+            <TextBlock Text="{Binding CueText}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </LayoutTransformControl>
+</Window>

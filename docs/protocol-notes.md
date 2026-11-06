@@ -16,7 +16,7 @@ The sources at the end let you re-check behaviour when firmware changes.
 
 ### Zwift channel (what we use)
 
-Every frame is `[type byte][protobuf]`, plaintext. Encoder: `src/MyWahoo.Core/Protocol/ZwiftTrainerProtocol.cs`.
+Every frame is `[type byte][protobuf]`, plaintext. Encoder: `src/BingeRide.Core/Protocol/ZwiftTrainerProtocol.cs`.
 
 | Step | Bytes |
 |---|---|

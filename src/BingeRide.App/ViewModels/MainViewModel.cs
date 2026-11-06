@@ -1,0 +1,1045 @@
+using System.Collections.ObjectModel;
+using Avalonia.Media;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using BingeRide.App.Services;
+using BingeRide.Core.Ble;
+using BingeRide.Core.Devices;
+using BingeRide.Core.Protocol;
+using BingeRide.Core.Session;
+using BingeRide.Core.Settings;
+using BingeRide.Core.Workouts;
+using BingeRide.Workouts;
+
+namespace BingeRide.App.ViewModels;
+
+public sealed partial class ClickMappingItem(ClickButtons button, string label, ClickAction action, Action<ClickButtons, ClickAction> onChanged) : ObservableObject
+{
+    public ClickButtons Button { get; } = button;
+    public string Label { get; } = label;
+
+    [ObservableProperty]
+    private ClickAction _action = action;
+
+    partial void OnActionChanged(ClickAction value) => onChanged(Button, value);
+}
+
+/// <summary>One choosable overlay field (checkbox + reorder arrows).</summary>
+public sealed partial class OverlayFieldOption(OverlayField field, string label, bool selected, Action changed) : ObservableObject
+{
+    public OverlayField Field { get; } = field;
+    public string Label { get; } = label;
+
+    [ObservableProperty]
+    private bool _isSelected = selected;
+
+    partial void OnIsSelectedChanged(bool value) => changed();
+}
+
+/// <summary>A live number on the overlay, updated in place every tick.</summary>
+public sealed partial class OverlayValue : ObservableObject
+{
+    [ObservableProperty] private string _value = "";
+    [ObservableProperty] private string _unit = "";
+    [ObservableProperty] private IBrush _brush = Brushes.White;
+}
+
+/// <summary>A nearby device in the Devices list, with whether we're already connected to it.</summary>
+public sealed record DeviceRow(DiscoveredDevice Device, bool IsConnected)
+{
+    public string Name => Device.Name;
+    public string Detail => $"{Device.Role switch { DeviceRole.HeartRate => "Heart rate", var r => r.ToString() }} · {Device.Rssi} dBm";
+    public bool CanConnect => !IsConnected && Device.CanConnect;
+}
+
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
+{
+    private readonly IPlatformServices _platform;
+    private readonly string? _settingsPath;
+    private readonly DispatcherTimer _tick;
+    private readonly DispatcherTimer _saveSettings;
+    private IBleAdapter? _adapter;
+    private DeviceManager? _devices;
+    private ITrainer? _manualTrainer; // demo trainer (or a test double) instead of Bluetooth
+    private ITrainer? _attached;
+
+    public MainViewModel(IPlatformServices platform, AppSettings settings, string? settingsPath = null)
+    {
+        _platform = platform;
+        _settingsPath = settingsPath;
+        Settings = settings;
+        Ride = new RideController(settings);
+        Ride.ToggleCompactRequested += (_, _) => IsCompact = !IsCompact;
+        Library = new WorkoutLibrary(settings.ResolvedWorkoutsFolder);
+        Library.Changed += (_, _) => Dispatcher.UIThread.Post(RefreshLibrary);
+        Library.WorkoutArrived += (_, e) => Dispatcher.UIThread.Post(() => AnnounceWorkout(e, "New workout"));
+        Rides = new RideHistory(settings.ResolvedRidesFolder);
+        Ride.RideFinished += (_, ride) => SaveRide(ride);
+
+        ClickMappings = new ObservableCollection<ClickMappingItem>(
+            new (ClickButtons Button, string Label)[]
+            {
+                (ClickButtons.Plus, "+ button"), (ClickButtons.Minus, "− button"),
+                (ClickButtons.A, "A"), (ClickButtons.B, "B"), (ClickButtons.Y, "Y"), (ClickButtons.Z, "Z"),
+                (ClickButtons.Up, "D-pad up"), (ClickButtons.Down, "D-pad down"),
+                (ClickButtons.Left, "D-pad left"), (ClickButtons.Right, "D-pad right"),
+            }.Select(b => new ClickMappingItem(b.Button, b.Label, settings.ClickMapping.GetValueOrDefault(b.Button), OnMappingChanged)));
+
+        OverlayFieldOptions = [];
+        BuildOverlayFieldOptions();
+
+        _tick = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Normal, (_, _) => OnTick());
+        _saveSettings = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _saveSettings.Tick += (_, _) =>
+        {
+            _saveSettings.Stop();
+            SaveSettingsNow();
+        };
+        Refresh();
+    }
+
+    public AppSettings Settings { get; }
+    public RideController Ride { get; }
+    public WorkoutLibrary Library { get; }
+    public RideHistory Rides { get; }
+    public ObservableCollection<RideEntry> RideEntries { get; } = [];
+
+    public ObservableCollection<LibraryEntry> Workouts { get; } = [];
+    public ObservableCollection<DeviceRow> Devices { get; } = [];
+    public ObservableCollection<string> LogLines { get; } = [];
+    public ObservableCollection<ClickMappingItem> ClickMappings { get; }
+
+    // ---- configurable overlay fields --------------------------------------------------------
+    private static readonly (OverlayField Field, string Label)[] OverlayFieldLabels =
+    [
+        (OverlayField.Power, "Power (3 s)"), (OverlayField.Target, "Target (watts / grade)"), (OverlayField.Cadence, "Cadence"),
+        (OverlayField.Speed, "Speed"), (OverlayField.HeartRate, "Heart rate"), (OverlayField.Gear, "Gear"),
+        (OverlayField.Grade, "Grade"), (OverlayField.Distance, "Distance"), (OverlayField.RideTime, "Ride time"),
+        (OverlayField.AvgPower, "Average power"), (OverlayField.WorkKj, "Work (kJ)"),
+        (OverlayField.AvgHeartRate, "Average heart rate"), (OverlayField.MaxHeartRate, "Max heart rate"),
+        (OverlayField.Calories, "Calories"), (OverlayField.Food, "Food burned 🍕"),
+        (OverlayField.Landmark, "Distance as a famous trip 🌍"),
+    ];
+
+    private static readonly IBrush HeartBrush = new SolidColorBrush(Color.Parse("#FF6B81"));
+
+    /// <summary>All fields: checked ones first, in display order.</summary>
+    public ObservableCollection<OverlayFieldOption> OverlayFieldOptions { get; }
+
+    public OverlayValue OverlayBig1 { get; } = new();
+    public OverlayValue OverlayBig2 { get; } = new();
+    public ObservableCollection<OverlayValue> OverlaySmall { get; } = [];
+    [ObservableProperty] private bool _hasOverlayBig1 = true;
+    [ObservableProperty] private bool _hasOverlayBig2 = true;
+
+    public static IReadOnlyList<ClickAction> ClickActions { get; } = Enum.GetValues<ClickAction>();
+    public static IReadOnlyList<TrainerControlPreference> ControlPreferences { get; } = Enum.GetValues<TrainerControlPreference>();
+
+    /// <summary>Set by the window: reads text from the system clipboard.</summary>
+    public Func<Task<string?>>? ClipboardReader { get; set; }
+
+    /// <summary>Set by the window: shows an open-file dialog and returns local paths.</summary>
+    public Func<Task<IReadOnlyList<string>>>? FilePicker { get; set; }
+
+    // ---- live ride display ----------------------------------------------------------------
+    [ObservableProperty] private string _powerText = "0";
+    [ObservableProperty] private string _targetText = "—";
+    [ObservableProperty] private string _cadenceText = "0";
+    [ObservableProperty] private string _heartRateText = "—";
+    [ObservableProperty] private string _heartRateStatsText = "";
+    [ObservableProperty] private string _speedText = "0.0";
+    [ObservableProperty] private string _distanceText = "0 m";
+    [ObservableProperty] private string _elapsedText = "0:00";
+    [ObservableProperty] private string _avgPowerText = "0";
+    [ObservableProperty] private string _kjText = "0";
+    [ObservableProperty] private string _gearText = "12";
+    [ObservableProperty] private string _gearRatioText = "2.40";
+    [ObservableProperty] private string _gradeText = "0.0%";
+    [ObservableProperty] private string _ergWattsText = "0 W";
+    [ObservableProperty] private string _modeLabel = "FREE";
+    [ObservableProperty] private string _modeDetail = "";
+    [ObservableProperty] private bool _isErgMode;
+    [ObservableProperty] private bool _isSlopeMode;
+    [ObservableProperty] private bool _isFreeMode = true;
+    [ObservableProperty] private bool _isWorkoutMode;
+    [ObservableProperty] private bool _showGearControls = true;
+    [ObservableProperty] private bool _showIntensityControls;
+    [ObservableProperty] private IBrush _modeBrush = Brushes.MediumPurple;
+
+    // ---- workout ----------------------------------------------------------------------------
+    [ObservableProperty] private Workout? _activeWorkout;
+    [ObservableProperty] private double _workoutProgress = -1;
+    [ObservableProperty] private string _stepTitle = "";
+    [ObservableProperty] private string _stepTargetText = "";
+    [ObservableProperty] private string _stepRemainingText = "";
+    [ObservableProperty] private string _nextStepText = "";
+    [ObservableProperty] private string _intensityText = "100%";
+    [ObservableProperty] private string _workoutTimeText = "";
+    [ObservableProperty] private string _pauseLabel = "Pause";
+    [ObservableProperty] private string? _cueText;
+    [ObservableProperty] private string _compactLine = "";
+    [ObservableProperty] private string _workoutBannerText = "";
+
+    // ---- food burned ---------------------------------------------------------------------------
+    [ObservableProperty] private string _burnedFoodText = "";
+    [ObservableProperty] private string _kcalText = "";
+    [ObservableProperty] private string _nextFoodText = "";
+    [ObservableProperty] private IReadOnlyList<FoodMarker>? _activeFoodMarkers;
+    [ObservableProperty] private IReadOnlyList<FoodMarker>? _selectedFoodMarkers;
+    private (Workout? Workout, double Intensity, double Ftp, bool Show) _markersKey;
+
+    // ---- distance as famous trips --------------------------------------------------------------
+    [ObservableProperty] private string _distanceLandmarkText = "";
+    [ObservableProperty] private string _lifetimeText = "";
+    [ObservableProperty] private string _lifetimeNextText = "";
+    [ObservableProperty] private double _lifetimeFraction;
+
+    // ---- library -----------------------------------------------------------------------------
+    [ObservableProperty] private LibraryEntry? _selectedWorkout;
+    [ObservableProperty] private string _selectedSummary = "";
+    [ObservableProperty] private string? _notice;
+    [ObservableProperty] private LibraryEntry? _noticeEntry;
+
+    // ---- devices -----------------------------------------------------------------------------
+    [ObservableProperty] private string _trainerStatus = "Starting…";
+    [ObservableProperty] private bool _trainerConnected;
+    [ObservableProperty] private string _clickStatus = "No Zwift Click";
+    [ObservableProperty] private bool _clickConnected;
+    [ObservableProperty] private string _heartRateStatus = "No heart rate";
+    [ObservableProperty] private bool _heartRateConnected;
+    [ObservableProperty] private IBrush _trainerChipBrush = Brushes.Gray;
+    [ObservableProperty] private string _trainerChipText = "No trainer";
+    [ObservableProperty] private IBrush _clickChipBrush = Brushes.Gray;
+    [ObservableProperty] private string _clickChipText = "No Click";
+
+    // ---- ride recording ----------------------------------------------------------------------
+    [ObservableProperty] private bool _isRecording;
+    [ObservableProperty] private bool _isRidePaused;
+    [ObservableProperty] private bool _isRideActive;
+    [ObservableProperty] private string _rideTimeText = "0:00";
+    [ObservableProperty] private bool _bluetoothAvailable;
+
+    // ---- overlay -----------------------------------------------------------------------------
+    [ObservableProperty] private bool _isCompact;
+    [ObservableProperty] private bool _clickThrough;
+    [ObservableProperty] private IBrush _overlayBackground = Brushes.Black;
+
+    public bool HasCue => !string.IsNullOrEmpty(CueText);
+    public bool ShowFood => Settings.ShowFood;
+    public bool ShowLandmarks => Settings.ShowLandmarks;
+    public bool HasCompactLine => !string.IsNullOrEmpty(CompactLine);
+    partial void OnCompactLineChanged(string value) => OnPropertyChanged(nameof(HasCompactLine));
+    public bool HasNotice => !string.IsNullOrEmpty(Notice);
+    public bool HasSelection => SelectedWorkout?.Workout is not null;
+    public string? SelectedError => SelectedWorkout?.Error;
+    public string? SelectedDescription => SelectedWorkout?.Workout?.Description;
+    public bool HasActiveWorkout => ActiveWorkout is not null;
+    public bool ShowGradeControls => IsSlopeMode;
+    public bool ShowErgControls => IsErgMode;
+    public bool ShowManualControls => !IsWorkoutMode;
+    public double Ftp => Settings.Ftp;
+    public int Gear => Ride.Gear;
+
+    public bool IsRideIdle => !IsRideActive;
+    partial void OnIsRideActiveChanged(bool value) => OnPropertyChanged(nameof(IsRideIdle));
+    partial void OnCueTextChanged(string? value) => OnPropertyChanged(nameof(HasCue));
+    partial void OnNoticeChanged(string? value) => OnPropertyChanged(nameof(HasNotice));
+    partial void OnActiveWorkoutChanged(Workout? value) => OnPropertyChanged(nameof(HasActiveWorkout));
+    partial void OnIsSlopeModeChanged(bool value) => OnPropertyChanged(nameof(ShowGradeControls));
+    partial void OnIsErgModeChanged(bool value) => OnPropertyChanged(nameof(ShowErgControls));
+    partial void OnIsWorkoutModeChanged(bool value) => OnPropertyChanged(nameof(ShowManualControls));
+
+    partial void OnSelectedWorkoutChanged(LibraryEntry? value)
+    {
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectedError));
+        OnPropertyChanged(nameof(SelectedDescription));
+        SelectedSummary = value?.Workout is { } w ? Summarize(w) : "";
+        SelectedFoodMarkers = value?.Workout is { } sw && Settings.ShowFood ? FoodMenu.Markers(sw, Settings.Ftp) : null;
+    }
+
+    /// <summary>Loads the library, starts Bluetooth and the 4 Hz ride loop.</summary>
+    public void Start(bool watchLibrary = true)
+    {
+        try
+        {
+            Library.Start(watchLibrary);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddLog($"Workouts folder unavailable: {ex.Message}");
+        }
+
+        _adapter = _platform.CreateBleAdapter();
+        BluetoothAvailable = _adapter is not null;
+        if (_adapter is not null)
+        {
+            _devices = new DeviceManager(_adapter, Settings.ToTrainerOptions, Settings.ToClickOptions)
+            {
+                PreferredTrainer = Settings.TrainerAddress,
+                ClicksEnabled = Settings.ClickEnabled,
+                PreferredHeartRate = Settings.HeartRateAddress,
+                HeartRateEnabled = Settings.HeartRateEnabled,
+            };
+            _devices.HeartRateChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
+            _devices.HeartRateReceived += (_, bpm) => Ride.OnHeartRate(bpm, DateTimeOffset.UtcNow);
+            _devices.TrainerChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
+            _devices.ClicksChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
+            _devices.DiscoveredChanged += (_, _) => Dispatcher.UIThread.Post(SyncDevices);
+            _devices.ClickPressed += (_, b) => Dispatcher.UIThread.Post(() =>
+            {
+                Ride.OnClick(b);
+                Refresh();
+            });
+            _devices.Log += (_, m) => Dispatcher.UIThread.Post(() => AddLog(m));
+            try
+            {
+                _devices.Start();
+                AddLog("Scanning for KICKR and Zwift Click…");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Bluetooth failed to start: {ex.Message}");
+                BluetoothAvailable = false;
+            }
+        }
+        else
+        {
+            AddLog("Bluetooth LE is not available; use the demo trainer to try the app.");
+        }
+        RefreshRides();
+        SyncDevices();
+        _ = StartRemoteIfEnabledAsync();
+        _tick.Start();
+    }
+
+    private void OnTick()
+    {
+        Ride.Tick(DateTimeOffset.UtcNow);
+        Refresh();
+    }
+
+    /// <summary>Copies the ride state into display properties (cheap: unchanged values don't notify).</summary>
+    public void Refresh()
+    {
+        var r = Ride;
+        IsRecording = r.State == RideState.Recording;
+        IsRidePaused = r.IsPaused;
+        IsRideActive = r.IsRideActive;
+        RideTimeText = Fmt.Duration(r.RideTimerSeconds);
+        PowerText = $"{r.PowerW:0}";
+        CadenceText = $"{r.CadenceRpm:0}";
+        HeartRateText = r.HeartRate is { } hr ? $"{hr}" : "—";
+        HeartRateStatsText = r.AverageHeartRate is { } avgHr ? $"avg {avgHr} · max {r.MaxHeartRate}" : "";
+        SpeedText = $"{r.SpeedKmh:0.0}";
+        DistanceText = Fmt.Distance(r.DistanceM);
+        ElapsedText = Fmt.Duration(r.RideSeconds);
+        AvgPowerText = $"{r.AveragePowerW:0}";
+        KjText = $"{r.WorkKj:0}";
+        GearText = $"{r.Gear}";
+        GearRatioText = $"{r.GearRatio:0.00}";
+        GradeText = Fmt.Grade(r.EffectiveGrade);
+        ErgWattsText = $"{r.ErgWatts} W";
+
+        IsErgMode = r.Mode == RideMode.Erg;
+        IsSlopeMode = r.Mode == RideMode.Slope;
+        IsFreeMode = r.Mode == RideMode.Free;
+        IsWorkoutMode = r.Mode == RideMode.Workout;
+        var kind = r.EffectiveKind;
+        ShowGearControls = kind != StepKind.Erg;
+        ShowIntensityControls = IsWorkoutMode && kind == StepKind.Erg;
+        TargetText = r.EffectiveErgWatts is { } erg && kind == StepKind.Erg ? $"{erg} W" : Fmt.Grade(r.EffectiveGrade);
+
+        (ModeLabel, ModeBrush) = (r.Mode, kind) switch
+        {
+            (RideMode.Erg, _) => ("ERG", Brushes.DarkOrange),
+            (RideMode.Slope, _) => ("SLOPE", Brushes.MediumSeaGreen),
+            (RideMode.Free, _) => ("FREE", Brushes.MediumPurple),
+            (_, StepKind.Erg) => ("WORKOUT · ERG", (IBrush)Brushes.DarkOrange),
+            (_, StepKind.Slope) => ("WORKOUT · SLOPE", Brushes.MediumSeaGreen),
+            _ => ("WORKOUT · FREE", Brushes.MediumPurple),
+        };
+
+        var player = r.Player;
+        ActiveWorkout = player?.Workout;
+        if (player is not null)
+        {
+            WorkoutProgress = player.Progress;
+            IntensityText = $"{r.WorkoutIntensityPct:0}%";
+            PauseLabel = r.IsPaused ? "Resume" : "Pause";
+            WorkoutTimeText = player.Workout.HasDistanceSteps
+                ? $"{Fmt.Duration(player.ElapsedSec)} · {Fmt.Distance(r.DistanceM)}"
+                : $"{Fmt.Duration(player.ElapsedSec)} / {Fmt.Duration(player.Workout.TotalDurationSec)}";
+            WorkoutBannerText = player.IsFinished
+                ? $"✓ {player.Workout.Name} complete"
+                : $"{player.Workout.Name} · step {player.StepIndex + 1}/{player.Workout.Steps.Count}";
+            if (player.CurrentStep is { } step)
+            {
+                StepTitle = Fmt.StepTitle(step, Settings.Ftp);
+                StepTargetText = Fmt.StepTarget(step, Settings.Ftp, r.WorkoutIntensityPct);
+                StepRemainingText = step.IsDistanceBased ? Fmt.Distance(player.StepRemaining) : Fmt.Duration(player.StepRemaining);
+                NextStepText = player.NextStep is { } next
+                    ? $"Next: {Fmt.StepTitle(next, Settings.Ftp)} · {Fmt.StepTarget(next, Settings.Ftp, r.WorkoutIntensityPct)} · {Fmt.StepLength(next)}"
+                    : "Last step";
+            }
+            else
+            {
+                StepTitle = "Workout complete";
+                StepTargetText = "Free";
+                StepRemainingText = "0:00";
+                NextStepText = "Shift freely, or pick another workout";
+            }
+            var status = r.IsPaused ? "PAUSED · " : r.IsAutoPaused ? "Pedal to resume · " : "";
+            CompactLine = status + StepTitle;
+            ModeDetail = kind == StepKind.Erg
+                ? "Trainer holds the target. Click +/− nudges the intensity."
+                : "Ride it like a road. Click +/− shifts gears.";
+        }
+        else
+        {
+            WorkoutProgress = -1;
+            // Numbers come from the configurable overlay fields; this line only carries the ride's state.
+            CompactLine = r.IsPaused ? "PAUSED" : r.IsAutoPaused ? "Pedal to resume" : r.IsRideActive ? "" : "Not recording: press ▶ to start a ride";
+            ModeDetail = r.Mode switch
+            {
+                RideMode.Erg => "Trainer holds your power. Click +/− changes watts.",
+                RideMode.Slope => "Simulated climb. Click +/− shifts gears.",
+                _ => "Flat road. Click +/− shifts gears.",
+            };
+        }
+        CueText = r.Cue;
+        RefreshFood();
+        RefreshLandmarks();
+        RefreshOverlayValues();
+        OverlayBackground = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(Settings.OverlayOpacity, 0.05, 1) * 255), 0x0B, 0x0D, 0x12));
+        OnPropertyChanged(nameof(Ftp));
+        OnPropertyChanged(nameof(Gear));
+    }
+
+    // ---- ride commands -----------------------------------------------------------------------
+    [RelayCommand]
+    private void SetMode(string mode)
+    {
+        if (Enum.TryParse<RideMode>(mode, out var m)) Ride.SetMode(m);
+        Refresh();
+    }
+
+    [RelayCommand] private void Up() { Ride.Up(); Refresh(); }
+    [RelayCommand] private void Down() { Ride.Down(); Refresh(); }
+    [RelayCommand] private void GearUp() { Ride.SetGear(Ride.Gear + 1); Refresh(); }
+    [RelayCommand] private void GearDown() { Ride.SetGear(Ride.Gear - 1); Refresh(); }
+    [RelayCommand] private void ErgUp() { Ride.SetErgWatts(Ride.ErgWatts + Settings.ErgStepWatts); Refresh(); }
+    [RelayCommand] private void ErgDown() { Ride.SetErgWatts(Ride.ErgWatts - Settings.ErgStepWatts); Refresh(); }
+    [RelayCommand] private void GradeUp() { Ride.AdjustGrade(+1); Refresh(); }
+    [RelayCommand] private void GradeDown() { Ride.AdjustGrade(-1); Refresh(); }
+    [RelayCommand] private void IntensityUp() { Ride.SetWorkoutIntensity(Ride.WorkoutIntensityPct + Settings.WorkoutIntensityStepPct); Refresh(); }
+    [RelayCommand] private void IntensityDown() { Ride.SetWorkoutIntensity(Ride.WorkoutIntensityPct - Settings.WorkoutIntensityStepPct); Refresh(); }
+    [RelayCommand] private void TogglePause() { Ride.TogglePause(); Refresh(); }
+    [RelayCommand] private void SkipStep() { Ride.SkipStep(); Refresh(); }
+    [RelayCommand] private void PreviousStep() { Ride.PreviousStep(); Refresh(); }
+    [RelayCommand] private void StopWorkout() { Ride.StopWorkout(); Refresh(); }
+    [RelayCommand] private void StartRide() { Ride.StartRide(); Refresh(); }
+    [RelayCommand] private void FinishRide() { Ride.FinishRide(); Refresh(); }
+    [RelayCommand] private void OpenRidesFolder() => _platform.OpenFolder(Rides.Folder);
+
+    [RelayCommand]
+    private void StartWorkout(LibraryEntry? entry)
+    {
+        entry ??= SelectedWorkout;
+        if (entry?.Workout is not { } w) return;
+        Ride.StartWorkout(w);
+        Notice = null;
+        AddLog($"Started workout \"{w.Name}\"");
+        Refresh();
+    }
+
+    [RelayCommand] private void StartNoticeWorkout() => StartWorkout(NoticeEntry);
+    [RelayCommand] private void DismissNotice() => Notice = null;
+
+    // ---- overlay commands --------------------------------------------------------------------
+    [RelayCommand] private void ToggleCompact() => IsCompact = !IsCompact;
+    [RelayCommand] private void ToggleClickThrough() => ClickThrough = !ClickThrough;
+
+    [RelayCommand]
+    private void OpacityUp() => SetOverlayOpacity(Settings.OverlayOpacity + 0.1);
+
+    [RelayCommand]
+    private void OpacityDown() => SetOverlayOpacity(Settings.OverlayOpacity - 0.1);
+
+    public double OverlayOpacity
+    {
+        get => Settings.OverlayOpacity;
+        set => SetOverlayOpacity(value);
+    }
+
+    private void SetOverlayOpacity(double value)
+    {
+        Settings.OverlayOpacity = Math.Round(Math.Clamp(value, 0.1, 1), 2);
+        OnPropertyChanged(nameof(OverlayOpacity));
+        SaveSettingsSoon();
+        Refresh();
+    }
+
+    public double OverlayScale
+    {
+        get => Settings.OverlayScale;
+        set
+        {
+            Settings.OverlayScale = Math.Round(Math.Clamp(value, 0.6, 2.0), 2);
+            OnPropertyChanged();
+            SaveSettingsSoon();
+        }
+    }
+
+    // ---- library commands --------------------------------------------------------------------
+    [RelayCommand]
+    private async Task PasteWorkout()
+    {
+        var text = ClipboardReader is null ? null : await ClipboardReader();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Notice = "The clipboard is empty. Copy Claude's whole answer (or just the workout block) first.";
+            NoticeEntry = null;
+            return;
+        }
+        if (WorkoutImporter.TryImportFromPastedText(text, out var result, out var errors) && result is not null)
+        {
+            var entry = Library.Save(result);
+            RefreshLibrary();
+            AnnounceWorkout(entry, "Pasted");
+        }
+        else
+        {
+            Notice = "No workout found in the clipboard" + (errors.Count > 0 ? $": {errors[0]}" : ".");
+            NoticeEntry = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportFile()
+    {
+        if (FilePicker is null) return;
+        ImportPaths(await FilePicker());
+    }
+
+    /// <summary>Imports files (from the picker or drag &amp; drop) by copying them into the library.</summary>
+    public void ImportPaths(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            try
+            {
+                var result = WorkoutImporter.ImportFile(path);
+                var inLibrary = string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), Path.GetFullPath(Library.Folder), StringComparison.OrdinalIgnoreCase);
+                var entry = inLibrary ? Library.Entries.FirstOrDefault(e => e.Path == path) : Library.Save(result, path);
+                RefreshLibrary();
+                if (entry is not null) AnnounceWorkout(entry, "Imported");
+            }
+            catch (Exception ex)
+            {
+                Notice = $"Couldn't import {Path.GetFileName(path)}: {ex.Message}";
+                NoticeEntry = null;
+            }
+        }
+    }
+
+    [RelayCommand] private void OpenWorkoutsFolder() => _platform.OpenFolder(Library.Folder);
+    [RelayCommand] private void ReloadLibrary() => Library.Rescan();
+
+    // ---- device commands ---------------------------------------------------------------------
+    [RelayCommand]
+    private async Task UseDemoTrainer()
+    {
+        if (_devices?.Trainer is not null) await _devices.DisconnectTrainerAsync();
+        if (_manualTrainer is not null) return;
+        UseTrainer(new SimulatedTrainer(Settings.RiderKg + Settings.BikeKg));
+        AddLog("Demo trainer connected (simulated rider)");
+    }
+
+    /// <summary>Rides with a trainer that isn't found over Bluetooth (the demo trainer, or a test double).</summary>
+    public void UseTrainer(ITrainer trainer)
+    {
+        _manualTrainer = trainer;
+        SyncDevices();
+    }
+
+    [RelayCommand]
+    private async Task DisconnectTrainer()
+    {
+        if (_manualTrainer is { } manual)
+        {
+            _manualTrainer = null;
+            await manual.DisposeAsync();
+        }
+        if (_devices is not null) await _devices.DisconnectTrainerAsync();
+        SyncDevices();
+    }
+
+    [RelayCommand]
+    private async Task ConnectDevice(DiscoveredDevice? device)
+    {
+        if (device is null || _devices is null || device.Role == DeviceRole.Click) return;
+        if (device.Role == DeviceRole.HeartRate)
+        {
+            Settings.HeartRateAddress = device.Address;
+            SaveSettingsSoon();
+            await _devices.ConnectHeartRateAsync(device.Address);
+            return;
+        }
+        if (_manualTrainer is { } manual)
+        {
+            _manualTrainer = null;
+            await manual.DisposeAsync();
+        }
+        _devices.AutoConnectTrainer = true;
+        Settings.TrainerAddress = device.Address;
+        SaveSettingsSoon();
+        await _devices.ConnectTrainerAsync(device.Address);
+    }
+
+    private void SyncDevices()
+    {
+        ITrainer? trainer = _manualTrainer ?? _devices?.Trainer;
+        if (!ReferenceEquals(trainer, _attached))
+        {
+            if (_attached is not null) _attached.DataReceived -= OnTrainerData;
+            _attached = trainer;
+            if (trainer is not null) trainer.DataReceived += OnTrainerData;
+            Ride.Trainer = trainer;
+            if (trainer is KickrTrainer k && Settings.TrainerAddress != k.Address)
+            {
+                Settings.TrainerAddress = k.Address;
+                SaveSettingsSoon();
+            }
+        }
+
+        TrainerConnected = trainer is not null;
+        TrainerStatus = trainer switch
+        {
+            SimulatedTrainer => "Demo trainer",
+            not null => $"{trainer.Name} · {(trainer.ControlPlane == ControlPlane.Zwift ? "virtual shifting" : "FTMS")}",
+            null when _devices is not null => _devices.TrainerStatus ?? "Searching…",
+            _ => "Bluetooth off · try the demo trainer",
+        };
+
+        var clicks = _devices?.Clicks ?? [];
+        ClickConnected = clicks.Count > 0;
+        ClickStatus = clicks.Count == 0
+            ? "No Zwift Click"
+            : string.Join(" · ", clicks.Select(c => c.IsLocked ? $"{c.DisplayName} locked" : c.DisplayName));
+
+        var hrm = _devices?.HeartRate;
+        HeartRateConnected = hrm is not null;
+        HeartRateStatus = hrm is not null ? hrm.Name : Settings.HeartRateEnabled ? "No heart rate" : "Heart rate off";
+        if (hrm is not null && Settings.HeartRateAddress != hrm.Address)
+        {
+            Settings.HeartRateAddress = hrm.Address;
+            SaveSettingsSoon();
+        }
+
+        var connecting = trainer is null && _devices?.TrainerStatus is { } ts &&
+                         (ts.StartsWith("Connecting", StringComparison.Ordinal) || ts.StartsWith("Reconnecting", StringComparison.Ordinal));
+        TrainerChipBrush = trainer is not null ? Brushes.MediumSeaGreen : connecting ? Brushes.Orange : Brushes.Gray;
+        TrainerChipText = trainer switch
+        {
+            SimulatedTrainer => "Demo trainer",
+            not null => "Trainer ✓",
+            _ when connecting => "Trainer…",
+            _ => "No trainer",
+        };
+        ClickChipBrush = clicks.Count == 0 ? Brushes.Gray : clicks.Any(c => c.IsLocked) ? Brushes.Orange : Brushes.MediumSeaGreen;
+        ClickChipText = clicks.Count switch { 0 => "No Click", 1 => "Click ✓", var n => $"Click ✓ ×{n}" };
+
+        if (_devices is not null)
+        {
+            var connected = new HashSet<ulong>(clicks.Select(c => c.Address));
+            if (_devices.Trainer is { } t) connected.Add(t.Address);
+            if (hrm is not null) connected.Add(hrm.Address);
+            Devices.Clear();
+            foreach (var d in _devices.Discovered) Devices.Add(new DeviceRow(d, connected.Contains(d.Address)));
+        }
+    }
+
+    private void OnTrainerData(object? sender, TrainerData data) => Ride.OnTrainerData(data);
+
+    // ---- settings ----------------------------------------------------------------------------
+    public decimal FtpSetting
+    {
+        get => Settings.Ftp;
+        set => UpdateSetting(() => Settings.Ftp = (int)Math.Clamp(value, 50, 600));
+    }
+
+    public decimal RiderKgSetting
+    {
+        get => (decimal)Settings.RiderKg;
+        set => UpdateSetting(() => Settings.RiderKg = (double)Math.Clamp(value, 30, 200));
+    }
+
+    public decimal BikeKgSetting
+    {
+        get => (decimal)Settings.BikeKg;
+        set => UpdateSetting(() => Settings.BikeKg = (double)Math.Clamp(value, 3, 30));
+    }
+
+    public decimal ErgStepSetting
+    {
+        get => Settings.ErgStepWatts;
+        set => UpdateSetting(() => Settings.ErgStepWatts = (int)Math.Clamp(value, 1, 50));
+    }
+
+    public decimal GradeStepSetting
+    {
+        get => (decimal)Settings.GradeStepPct;
+        set => UpdateSetting(() => Settings.GradeStepPct = (double)Math.Clamp(value, 0.1m, 5));
+    }
+
+    public decimal IntensityStepSetting
+    {
+        get => (decimal)Settings.WorkoutIntensityStepPct;
+        set => UpdateSetting(() => Settings.WorkoutIntensityStepPct = (double)Math.Clamp(value, 1, 10));
+    }
+
+    public decimal ChainringSetting
+    {
+        get => Settings.PhysicalChainring;
+        set => UpdateSetting(() => Settings.PhysicalChainring = (int)Math.Clamp(value, 20, 60));
+    }
+
+    public decimal CogSetting
+    {
+        get => Settings.PhysicalCog;
+        set => UpdateSetting(() => Settings.PhysicalCog = (int)Math.Clamp(value, 10, 36));
+    }
+
+    public bool AutoPauseSetting
+    {
+        get => Settings.AutoPause;
+        set => UpdateSetting(() => Settings.AutoPause = value);
+    }
+
+    public bool ErgViaFtmsSetting
+    {
+        get => Settings.ErgViaFtms;
+        set => UpdateSetting(() => Settings.ErgViaFtms = value);
+    }
+
+    public bool ClickIdleResetSetting
+    {
+        get => Settings.ClickResetIdleRightPuck;
+        set => UpdateSetting(() => Settings.ClickResetIdleRightPuck = value);
+    }
+
+    public bool ClickRebootLeftSetting
+    {
+        get => Settings.ClickRebootLockedLeftPuck;
+        set => UpdateSetting(() => Settings.ClickRebootLockedLeftPuck = value);
+    }
+
+    public TrainerControlPreference TrainerControlSetting
+    {
+        get => Settings.TrainerControl;
+        set => UpdateSetting(() => Settings.TrainerControl = value);
+    }
+
+    public bool HeartRateEnabledSetting
+    {
+        get => Settings.HeartRateEnabled;
+        set
+        {
+            UpdateSetting(() => Settings.HeartRateEnabled = value);
+            if (_devices is not null) _devices.HeartRateEnabled = value;
+        }
+    }
+
+    public bool ShowFoodSetting
+    {
+        get => Settings.ShowFood;
+        set
+        {
+            UpdateSetting(() => Settings.ShowFood = value);
+            OnPropertyChanged(nameof(ShowFood));
+            OnSelectedWorkoutChanged(SelectedWorkout);
+            Refresh();
+        }
+    }
+
+    public bool ShowLandmarksSetting
+    {
+        get => Settings.ShowLandmarks;
+        set
+        {
+            UpdateSetting(() => Settings.ShowLandmarks = value);
+            OnPropertyChanged(nameof(ShowLandmarks));
+            OnSelectedWorkoutChanged(SelectedWorkout);
+            Refresh();
+        }
+    }
+
+    public bool StartCompactSetting
+    {
+        get => Settings.StartCompact;
+        set => UpdateSetting(() => Settings.StartCompact = value);
+    }
+
+    public string WorkoutsFolder => Library.Folder;
+
+    private void UpdateSetting(Action apply, [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        apply();
+        OnPropertyChanged(name);
+        SaveSettingsSoon();
+        if (name == nameof(FtpSetting))
+        {
+            SelectedSummary = SelectedWorkout?.Workout is { } w ? Summarize(w) : "";
+            Refresh();
+        }
+    }
+
+    private void OnMappingChanged(ClickButtons button, ClickAction action)
+    {
+        Settings.ClickMapping[button] = action;
+        SaveSettingsSoon();
+    }
+
+    private void SaveSettingsSoon()
+    {
+        _saveSettings.Stop();
+        _saveSettings.Start();
+    }
+
+    public void SaveSettingsNow()
+    {
+        try
+        {
+            SettingsStore.Save(Settings, _settingsPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddLog($"Couldn't save settings: {ex.Message}");
+        }
+    }
+
+    // ---- helpers -----------------------------------------------------------------------------
+    private void RefreshLibrary()
+    {
+        var selectedPath = SelectedWorkout?.Path;
+        Workouts.Clear();
+        foreach (var e in Library.Entries) Workouts.Add(e);
+        SelectedWorkout = Workouts.FirstOrDefault(e => e.Path == selectedPath) ?? Workouts.FirstOrDefault(e => e.Workout is not null);
+    }
+
+    private void AnnounceWorkout(LibraryEntry entry, string verb)
+    {
+        RefreshLibrary();
+        SelectedWorkout = Workouts.FirstOrDefault(e => e.Path == entry.Path) ?? entry;
+        if (entry.Workout is null)
+        {
+            Notice = $"{entry.FileName}: {entry.Error}";
+            NoticeEntry = null;
+            return;
+        }
+        Notice = $"{verb}: {entry.Name} ({Fmt.Duration(entry.Workout.TotalDurationSec)})";
+        NoticeEntry = entry;
+        AddLog(Notice);
+    }
+
+    private string Summarize(Workout w)
+    {
+        var s = WorkoutStats.Compute(w, Settings.Ftp);
+        var parts = new List<string>();
+        if (s.TotalSeconds > 0) parts.Add(Fmt.Duration(s.TotalSeconds));
+        if (s.TotalMeters > 0) parts.Add(Fmt.Distance(s.TotalMeters));
+        if (s.AverageWatts > 0) parts.Add($"avg {s.AverageWatts:0} W");
+        if (s.Tss > 0) parts.Add($"TSS {s.Tss:0}");
+        if (s.IntensityFactor > 0) parts.Add($"IF {s.IntensityFactor:0.00}");
+        var km = WorkoutEstimates.DistanceKm(w, Settings.Ftp, Settings.RiderKg + Settings.BikeKg);
+        if (km > 0.5)
+            parts.Add(Settings.ShowLandmarks ? $"≈ {km:0} km {Landmarks.Equivalent(km)}" : $"≈ {km:0} km");
+        if (Settings.ShowFood && s.TotalSeconds > 0)
+        {
+            var kcal = FoodMenu.KcalFromKj(s.AverageWatts * s.TotalSeconds / 1000);
+            parts.Add($"≈ {kcal:0} kcal {string.Concat(FoodMenu.Progress(kcal).Burned.Select(f => f.Emoji))}");
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private void RefreshFood()
+    {
+        var r = Ride;
+        var food = r.Food;
+        KcalText = $"≈ {r.Kcal:0} kcal";
+        BurnedFoodText = string.Concat(food.Burned.Select(f => f.Emoji));
+        NextFoodText = r.State == RideState.Idle
+            ? "Start a ride to see the food you burn"
+            : $"next {food.Next.Emoji} {food.Next.Name.ToLowerInvariant()} in {Math.Ceiling(food.KcalToNext):0} kcal";
+
+        var key = (r.Player?.Workout, r.WorkoutIntensityPct, (double)Settings.Ftp, Settings.ShowFood);
+        if (key != _markersKey)
+        {
+            _markersKey = key;
+            ActiveFoodMarkers = key.Workout is { } w && key.ShowFood ? FoodMenu.Markers(w, key.Item3, key.WorkoutIntensityPct) : null;
+        }
+    }
+
+    private void RefreshLandmarks()
+    {
+        var r = Ride;
+        if (r.State == RideState.Idle)
+        {
+            DistanceLandmarkText = "Start a ride to travel the world";
+        }
+        else
+        {
+            var p = Landmarks.Progress(r.DistanceM / 1000);
+            DistanceLandmarkText = (p.Passed is { } passed ? $"✓ {passed.Label} · " : "") + Landmarks.NextText(p);
+        }
+        var life = Landmarks.Progress(r.LifetimeKm);
+        LifetimeText = $"All rides: {r.LifetimeKm:#,0.#} km";
+        LifetimeNextText = (life.Next is { } next ? $"{Landmarks.Pct(life.FractionOfNext)} of the way to {next.Label}" : "")
+                           + (life.Passed is { } done ? $" · past {done.Label}" : "");
+        LifetimeFraction = life.FractionOfNext;
+    }
+
+    private void BuildOverlayFieldOptions()
+    {
+        var chosen = Settings.OverlayFields.Distinct().ToList();
+        OverlayFieldOptions.Clear();
+        foreach (var field in chosen.Concat(OverlayFieldLabels.Select(l => l.Field).Except(chosen)))
+        {
+            var label = OverlayFieldLabels.First(l => l.Field == field).Label;
+            OverlayFieldOptions.Add(new OverlayFieldOption(field, label, chosen.Contains(field), OnOverlayFieldsChanged));
+        }
+        SyncOverlaySlots();
+    }
+
+    private void OnOverlayFieldsChanged()
+    {
+        Settings.OverlayFields = OverlayFieldOptions.Where(o => o.IsSelected).Select(o => o.Field).ToList();
+        SaveSettingsSoon();
+        SyncOverlaySlots();
+        RefreshOverlayValues();
+    }
+
+    [RelayCommand] private void MoveFieldUp(OverlayFieldOption? option) => MoveField(option, -1);
+    [RelayCommand] private void MoveFieldDown(OverlayFieldOption? option) => MoveField(option, +1);
+
+    private void MoveField(OverlayFieldOption? option, int delta)
+    {
+        if (option is null) return;
+        var from = OverlayFieldOptions.IndexOf(option);
+        var to = from + delta;
+        if (from < 0 || to < 0 || to >= OverlayFieldOptions.Count) return;
+        OverlayFieldOptions.Move(from, to);
+        OnOverlayFieldsChanged();
+    }
+
+    [RelayCommand]
+    private void ResetOverlayFields()
+    {
+        Settings.OverlayFields = AppSettings.DefaultOverlayFields();
+        SaveSettingsSoon();
+        BuildOverlayFieldOptions();
+        RefreshOverlayValues();
+    }
+
+    /// <summary>Resizes the small-field slots to match the selection (only when it changes, not every tick).</summary>
+    private void SyncOverlaySlots()
+    {
+        var count = Math.Max(0, Settings.OverlayFields.Count - 2);
+        while (OverlaySmall.Count > count) OverlaySmall.RemoveAt(OverlaySmall.Count - 1);
+        while (OverlaySmall.Count < count) OverlaySmall.Add(new OverlayValue());
+        HasOverlayBig1 = Settings.OverlayFields.Count > 0;
+        HasOverlayBig2 = Settings.OverlayFields.Count > 1;
+    }
+
+    private void RefreshOverlayValues()
+    {
+        var fields = Settings.OverlayFields;
+        if (fields.Count > 0) Fill(OverlayBig1, fields[0]);
+        if (fields.Count > 1) Fill(OverlayBig2, fields[1]);
+        for (var i = 2; i < fields.Count && i - 2 < OverlaySmall.Count; i++) Fill(OverlaySmall[i - 2], fields[i]);
+    }
+
+    private void Fill(OverlayValue slot, OverlayField field)
+    {
+        var r = Ride;
+        var (value, unit, brush) = field switch
+        {
+            OverlayField.Power => (PowerText, "W", Brushes.White),
+            OverlayField.Target => (TargetText, "", ModeBrush),
+            OverlayField.Cadence => (CadenceText, "rpm", Brushes.White),
+            OverlayField.Speed => (SpeedText, "km/h", Brushes.White),
+            OverlayField.HeartRate => ($"♥ {HeartRateText}", "", HeartBrush),
+            OverlayField.Gear => ($"G{GearText}", "", Brushes.White),
+            OverlayField.Grade => (GradeText, "grade", Brushes.White),
+            OverlayField.Distance => r.DistanceM >= 1000 ? ($"{r.DistanceM / 1000:0.00}", "km", Brushes.White) : ($"{r.DistanceM:0}", "m", (IBrush)Brushes.White),
+            OverlayField.RideTime => (ElapsedText, "time", Brushes.White),
+            OverlayField.AvgPower => (AvgPowerText, "W avg", Brushes.White),
+            OverlayField.WorkKj => (KjText, "kJ", Brushes.White),
+            OverlayField.AvgHeartRate => ($"♥ {r.AverageHeartRate?.ToString() ?? "—"}", "avg", HeartBrush),
+            OverlayField.MaxHeartRate => ($"♥ {r.MaxHeartRate?.ToString() ?? "—"}", "max", HeartBrush),
+            OverlayField.Calories => ($"{r.Kcal:0}", "kcal", Brushes.White),
+            OverlayField.Food => (BurnedFoodText.Length > 0 ? BurnedFoodText : "—", $"next {r.Food.Next.Emoji}", Brushes.White),
+            OverlayField.Landmark => Landmarks.Progress(r.DistanceM / 1000) is { Next: { } next } lp
+                ? (Landmarks.Pct(lp.FractionOfNext), $"of {next.Label}", Brushes.White)
+                : ("🌙", "past the Moon!", (IBrush)Brushes.White),
+            _ => ("", "", Brushes.White),
+        };
+        slot.Value = value;
+        slot.Unit = unit;
+        slot.Brush = brush;
+    }
+
+    private void SaveRide(RideRecording ride)
+    {
+        try
+        {
+            var entry = Rides.Save(ride, out var reason);
+            if (entry is null)
+            {
+                Notice = reason;
+            }
+            else
+            {
+                var trip = Settings.ShowLandmarks ? Landmarks.Equivalent(entry.Summary.DistanceM / 1000) : "";
+                Notice = $"Ride saved: {entry.StatsText}{(trip.Length > 0 ? $" ({trip})" : "")}. Upload {Path.GetFileName(entry.FitPath)} to Strava / Garmin Connect (Rides tab → folder).";
+                AddLog($"Saved ride {entry.FitPath}");
+                RefreshRides();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Notice = $"Couldn't save the ride: {ex.Message}";
+        }
+        NoticeEntry = null;
+    }
+
+    private void RefreshRides()
+    {
+        RideEntries.Clear();
+        foreach (var r in Rides.Load()) RideEntries.Add(r);
+        Ride.LifetimeKmBefore = RideEntries.Sum(r => r.Summary.DistanceM) / 1000;
+    }
+
+    private void AddLog(string message)
+    {
+        LogLines.Insert(0, $"{DateTime.Now:HH:mm:ss}  {message}");
+        while (LogLines.Count > 300) LogLines.RemoveAt(LogLines.Count - 1);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _tick.Stop();
+        if (Ride.IsRideActive) Ride.FinishRide(); // closing the app never loses a ride
+        if (_saveSettings.IsEnabled)
+        {
+            _saveSettings.Stop();
+            SaveSettingsNow();
+        }
+        Library.Dispose();
+        if (_manualTrainer is not null) await _manualTrainer.DisposeAsync();
+        await StopRemoteAsync();
+        if (_devices is not null) await _devices.DisposeAsync();
+    }
+}

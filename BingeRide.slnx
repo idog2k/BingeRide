@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BingeRide.App/BingeRide.App.csproj" />
+    <Project Path="src/BingeRide.Core/BingeRide.Core.csproj" />
+    <Project Path="src/BingeRide.Windows/BingeRide.Windows.csproj" />
+    <Project Path="src/BingeRide.Workouts/BingeRide.Workouts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BingeRide.App.Tests/BingeRide.App.Tests.csproj" />
+    <Project Path="tests/BingeRide.Core.Tests/BingeRide.Core.Tests.csproj" />
+    <Project Path="tests/BingeRide.Workouts.Tests/BingeRide.Workouts.Tests.csproj" />
+  </Folder>
+</Solution>

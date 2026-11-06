@@ -1,6 +1,6 @@
-# MyWahoo workout format (`mywahoo-workout` v1)
+# BingeRide workout format (`bingeride-workout` v1)
 
-MyWahoo's native workout format is JSON. It is the only format that can mix the trainer's three modes in
+BingeRide's native workout format is JSON. It is the only format that can mix the trainer's three modes in
 one workout:
 
 - **ERG**: the trainer holds a power target.
@@ -8,13 +8,13 @@ one workout:
 - **Free**: gears only.
 
 It is written to be easy for people and for Claude to produce. A JSON Schema is in
-[`mywahoo-workout.schema.json`](mywahoo-workout.schema.json).
+[`bingeride-workout.schema.json`](bingeride-workout.schema.json).
 
 ## Example
 
 ```json
 {
-  "format": "mywahoo-workout",
+  "format": "bingeride-workout",
   "version": 1,
   "name": "VO2max 5x3' @120%",
   "description": "Ramp warm-up, then 5 x 3 min at 120% FTP with 3 min easy. Aim for 95+ rpm on the reps.",
@@ -39,7 +39,7 @@ It is written to be easy for people and for Claude to produce. A JSON Schema is 
 
 | field | required | meaning |
 |---|---|---|
-| `format` | yes | Always `"mywahoo-workout"`. |
+| `format` | yes | Always `"bingeride-workout"`. Files from before the app was renamed say `"mywahoo-workout"`, which is still read. |
 | `version` | yes | Always `1`. |
 | `name` | yes | Short title shown in the library. |
 | `description` | no | One or two sentences: purpose and how to ride it. |
@@ -100,7 +100,7 @@ Write to the schema. When reading, the importer is lenient and reports these fix
 
 ## Pasting from a chat
 
-**Paste** in MyWahoo accepts a whole chat answer. It checks every fenced code block (any language tag) and
+**Paste** in BingeRide accepts a whole chat answer. It checks every fenced code block (any language tag) and
 the full text, and finds a workout by its content:
 
 - JSON with `"steps"`
