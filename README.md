@@ -115,3 +115,11 @@ docs/                  workout format, protocol notes and sources
 ```
 
 Run `dotnet test` from WSL to run everything. Plain Linux works too; only the Windows head needs `EnableWindowsTargeting`.
+
+## License
+
+MIT; see [`LICENSE`](LICENSE). Bundled third-party components and their licenses are listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). The Garmin FIT SDK has its own license, not MIT.
+
+Not affiliated with, endorsed by, or sponsored by Wahoo Fitness, Zwift, Garmin or Netflix. Their names are trademarks of their owners and are used only to describe compatibility.
+
+Exercise at your own risk: this app controls the resistance of a trainer you ride. If in doubt about your health, check with a doctor before training hard.
