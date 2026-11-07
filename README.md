@@ -28,6 +28,7 @@ BingeRide was built for the **Wahoo KICKR CORE 2 with Zwift Cog**. It can also c
 - A **Zwift Click** shifts gears, or nudges watts in ERG.
 - **Heart rate** comes from any Bluetooth strap, or a watch broadcasting HR (e.g. a Garmin Forerunner 970). It shows live, with average and max.
 - **Food burned 🍕:** ride energy turned into food (kcal ≈ kJ of work). Workouts show 🍎🍌🍪🍕🍔 on the chart where you'll burn each one. Free rides pop up "🍕 Slice of pizza burned!" as you go. Rides list them, the overlay can show them, and *Settings* turns it off.
+- **Motivation sentences 💪:** about 1000 short sentences, in random order. One appears when you start to pedal, then one every 5 minutes of riding. Each stays for 30 seconds, on the overlay and in the main window. *Settings* changes the interval or turns them off.
 - **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
@@ -58,6 +59,7 @@ The panel shows:
 - The fields you choose, in the order you choose. The defaults are power, target, cadence, gear, speed and heart rate.
 - The ride time and the mode.
 - In a workout: the step, the time left in the step, the next step, a chart of the workout, and the cues.
+- A motivation sentence every few minutes, on its own line at the bottom. The line goes away after 30 seconds.
 - A warning if the trainer is not connected.
 
 | Control | Action |
@@ -66,7 +68,7 @@ The panel shows:
 | `Ctrl+Alt+L` | Turn mouse click-through on or off. When it is on, your clicks go to the video under the panel. |
 | Drag the panel | Move it. The app remembers the position. |
 | Overlay `−` / ☀ | Make the background more / less transparent. |
-| Overlay sliders icon | Choose and order the fields: power, target, cadence, speed, heart rate, gear, grade, distance, ride time, avg power, kJ, avg/max HR, calories, food, famous trip. The first two are big. Also in *Settings*. |
+| Overlay sliders icon | Choose and order the fields: power, target, cadence, speed, heart rate, gear, grade, distance, ride time, avg power, kJ, avg/max HR, calories, food, famous trip. The first two are big. A checkbox shows or hides the motivation sentence on the overlay. Also in *Settings*. |
 | Overlay ✕ | Quit BingeRide. |
 
 `Ctrl+Alt+K` and `Ctrl+Alt+L` work from any app. Other keys go to the video while it has focus. To change gears or watts without leaving the video, use a Zwift Click or the [iPhone remote](#iphone-remote).

@@ -236,6 +236,11 @@
               <Border IsVisible="{Binding HasCue}" Background="#1A2B45" CornerRadius="8" Padding="12,8" Margin="0,6,0,0">
                 <TextBlock Text="{Binding CueText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
               </Border>
+              <Border x:Name="MotivationLine" IsVisible="{Binding HasMotivation}" Background="#3D2C0E" CornerRadius="8" Padding="12,8" Margin="0,6,0,0">
+                <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="#FFD27A" TextWrapping="Wrap">
+                  <Run Text="💪 " /><Run Text="{Binding MotivationText}" />
+                </TextBlock>
+              </Border>
             </StackPanel>
 
             <!-- Workout step -->
@@ -547,6 +552,11 @@
                 </Grid>
                 <CheckBox Content="Show the food I burn (🍕 = calories)" IsChecked="{Binding ShowFoodSetting}" />
                 <CheckBox Content="Show distance as famous trips (⚓ Tel Aviv → Haifa, 🛣️ New York → LA…)" IsChecked="{Binding ShowLandmarksSetting}" />
+                <Grid ColumnDefinitions="*,120">
+                  <CheckBox Content="Motivation sentence 💪 every (minutes)" IsChecked="{Binding ShowMotivationSetting}" />
+                  <NumericUpDown Grid.Column="1" Value="{Binding MotivationMinutesSetting}" Minimum="1" Maximum="60" Increment="1" FormatString="0"
+                                 IsEnabled="{Binding ShowMotivationSetting}" />
+                </Grid>
 
                 <TextBlock Classes="label" Text="OVERLAY" Margin="0,8,0,0" />
                 <Grid ColumnDefinitions="*,180" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">

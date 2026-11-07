@@ -4,5 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="BingeRide.Core.Tests" />
+    <EmbeddedResource Include="Session/motivation.txt" LogicalName="BingeRide.Core.motivation.txt" />
   </ItemGroup>
 </Project>

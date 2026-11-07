@@ -195,6 +195,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] private string _lifetimeNextText = "";
     [ObservableProperty] private double _lifetimeFraction;
 
+    // ---- motivation sentences ------------------------------------------------------------------
+    [ObservableProperty] private string? _motivationText;
+    public bool HasMotivation => !string.IsNullOrEmpty(MotivationText);
+    public bool HasOverlayMotivation => HasMotivation && Settings.OverlayMotivation;
+
+    partial void OnMotivationTextChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasMotivation));
+        OnPropertyChanged(nameof(HasOverlayMotivation));
+    }
+
     // ---- library -----------------------------------------------------------------------------
     [ObservableProperty] private LibraryEntry? _selectedWorkout;
     [ObservableProperty] private string _selectedSummary = "";
@@ -409,6 +420,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             };
         }
         CueText = r.Cue;
+        MotivationText = r.Motivation;
         RefreshFood();
         RefreshLandmarks();
         RefreshOverlayValues();
@@ -776,6 +788,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool ShowMotivationSetting
+    {
+        get => Settings.ShowMotivation;
+        set => UpdateSetting(() => Settings.ShowMotivation = value);
+    }
+
+    public decimal MotivationMinutesSetting
+    {
+        get => Settings.MotivationMinutes;
+        set => UpdateSetting(() => Settings.MotivationMinutes = (int)Math.Clamp(value, 1, 60));
+    }
+
+    public bool OverlayMotivationSetting
+    {
+        get => Settings.OverlayMotivation;
+        set
+        {
+            UpdateSetting(() => Settings.OverlayMotivation = value);
+            OnPropertyChanged(nameof(HasOverlayMotivation));
+        }
+    }
+
     public bool StartCompactSetting
     {
         get => Settings.StartCompact;
@@ -938,6 +972,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ResetOverlayFields()
     {
         Settings.OverlayFields = AppSettings.DefaultOverlayFields();
+        OverlayMotivationSetting = true;
         SaveSettingsSoon();
         BuildOverlayFieldOptions();
         RefreshOverlayValues();

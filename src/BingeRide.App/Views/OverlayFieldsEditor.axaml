@@ -26,6 +26,8 @@
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
+    <CheckBox Content="Motivation sentence 💪" IsChecked="{Binding OverlayMotivationSetting}" IsEnabled="{Binding ShowMotivationSetting}"
+              MinHeight="28" Padding="6,0" ToolTip.Tip="Appears every few minutes for 30 seconds, on its own line at the bottom" />
     <Button Content="Reset to default" Command="{Binding ResetOverlayFieldsCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
   </StackPanel>
 </UserControl>

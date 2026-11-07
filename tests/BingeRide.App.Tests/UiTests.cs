@@ -252,6 +252,45 @@ public sealed class UiTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Motivation_sentence_shows_on_the_overlay_and_the_main_window()
+    {
+        var vm = CreateVm();
+        vm.Ride.StartRide(T0);
+        Ride(vm, T0, 10);
+        Assert.Contains(vm.MotivationText, MotivationSentences.All);
+
+        var overlay = new OverlayWindow { DataContext = vm };
+        overlay.Show();
+        var main = new MainWindow { DataContext = vm, Width = 1200, Height = 780 };
+        main.Show();
+        var overlayLine = Line(overlay);
+        var mainLine = Line(main);
+        Assert.True(overlayLine.IsVisible);
+        Assert.True(mainLine.IsVisible);
+
+        // The longest sentence is what has to fit the overlay's width.
+        vm.MotivationText = MotivationSentences.All.MaxBy(s => s.Length);
+        Save(overlay, "overlay-motivation.png");
+        Save(main, "main-motivation.png");
+
+        // Unticking the overlay field hides it there, and only there.
+        vm.OverlayMotivationSetting = false;
+        Assert.False(overlayLine.IsVisible);
+        Assert.True(mainLine.IsVisible);
+        vm.ResetOverlayFieldsCommand.Execute(null);
+        Assert.True(overlayLine.IsVisible);
+
+        // Switched off in Settings, it leaves both screens at the next tick.
+        vm.ShowMotivationSetting = false;
+        Ride(vm, T0.AddSeconds(11), 1);
+        Assert.False(overlayLine.IsVisible);
+        Assert.False(mainLine.IsVisible);
+
+        static Border Line(Window window) =>
+            window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "MotivationLine");
+    }
+
+    [AvaloniaFact]
     public async Task Pairing_shows_a_one_time_qr_code()
     {
         var vm = CreateVm();

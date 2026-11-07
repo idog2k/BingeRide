@@ -134,6 +134,11 @@
           <Border IsVisible="{Binding HasCue}" Background="#CC1A2B45" CornerRadius="8" Padding="8,5">
             <TextBlock Text="{Binding CueText}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
           </Border>
+          <Border x:Name="MotivationLine" IsVisible="{Binding HasOverlayMotivation}" Background="#CC3D2C0E" CornerRadius="8" Padding="8,5">
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#FFD27A" TextWrapping="Wrap">
+              <Run Text="💪 " /><Run Text="{Binding MotivationText}" />
+            </TextBlock>
+          </Border>
         </StackPanel>
       </Grid>
     </Border>

@@ -33,6 +33,10 @@ public sealed class AppSettings
     /// <summary>Show distance as famous trips (Tel Aviv → Haifa, New York → Los Angeles…), with milestone cues.</summary>
     public bool ShowLandmarks { get; set; } = true;
 
+    /// <summary>Show a motivation sentence every <see cref="MotivationMinutes"/> minutes of riding.</summary>
+    public bool ShowMotivation { get; set; } = true;
+    public int MotivationMinutes { get; set; } = 5;
+
     public ulong? TrainerAddress { get; set; }
     public ulong? HeartRateAddress { get; set; }
     public bool HeartRateEnabled { get; set; } = true;
@@ -58,6 +62,13 @@ public sealed class AppSettings
 
     public static List<OverlayField> DefaultOverlayFields() =>
         [OverlayField.Power, OverlayField.Target, OverlayField.Cadence, OverlayField.Gear, OverlayField.Speed, OverlayField.HeartRate];
+
+    /// <summary>
+    /// Show the motivation sentence on the overlay as well. Not an <see cref="OverlayField"/>: a sentence needs its
+    /// own line, and <see cref="OverlayFields"/> is saved in settings.json, so a new entry would stay off for existing users.
+    /// </summary>
+    public bool OverlayMotivation { get; set; } = true;
+
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     public bool StartCompact { get; set; }

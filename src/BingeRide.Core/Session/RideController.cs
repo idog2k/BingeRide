@@ -19,6 +19,7 @@ public sealed class RideController
     private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan AutoPauseAfter = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CueDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MotivationDuration = TimeSpan.FromSeconds(30);
 
     private readonly Lock _samplesLock = new();
     private readonly Queue<(DateTimeOffset At, int Watts)> _powerSamples = new();
@@ -93,6 +94,13 @@ public sealed class RideController
     public TrainerTarget? CurrentTarget { get; private set; }
     public string? Cue { get; private set; }
     private DateTimeOffset _cueUntil;
+
+    /// <summary>The motivation sentence on screen now, if any. Not a <see cref="Cue"/>: it must never delay a workout instruction.</summary>
+    public string? Motivation { get; private set; }
+    private readonly MotivationDeck _motivationDeck = new(MotivationSentences.All);
+    private DateTimeOffset _motivationUntil;
+    private double? _lastMotivationAt; // in RideSeconds, so stopping doesn't count towards the next sentence
+
     private double _speedMps;
     private int _instantPower;
 
@@ -180,6 +188,8 @@ public sealed class RideController
         _landmarksAnnounced = 0;
         _lifetimeLandmarksAnnounced = Landmarks.CountReached(LifetimeKmBefore);
         _pendingCues.Clear();
+        Motivation = null;
+        _lastMotivationAt = null;
         Recording = new RideRecording { StartTime = now, Ftp = Settings.Ftp, WorkoutName = Player?.Workout.Name };
         State = RideState.Recording;
         _lastPedalling = now; // grace period before auto-pause
@@ -218,6 +228,7 @@ public sealed class RideController
         SetTimer(false, now);
         Recording.EndTime = now;
         State = RideState.Finished;
+        Motivation = null;
         if (Mode == RideMode.Workout) StopWorkout();
         Changed?.Invoke(this, EventArgs.Empty);
         RideFinished?.Invoke(this, Recording);
@@ -400,6 +411,7 @@ public sealed class RideController
             }
         }
         if (running && Settings.ShowLandmarks) AnnounceLandmarks();
+        UpdateMotivation(now, running && pedalling);
 
         if (Cue is not null && now >= _cueUntil) Cue = null;
         // Food and distance news wait for any workout instruction on screen to finish, then take turns.
@@ -427,6 +439,17 @@ public sealed class RideController
             if (LifetimeKmBefore > 0 && l.Km > km)
                 _pendingCues.Enqueue($"🏆 All your rides together: {l.Emoji} {l.Name} ({l.Km:#,0} km)!");
         }
+    }
+
+    /// <summary>The first sentence comes with the first pedal stroke, then one every few minutes of riding.</summary>
+    private void UpdateMotivation(DateTimeOffset now, bool riding)
+    {
+        if (!Settings.ShowMotivation || now >= _motivationUntil) Motivation = null;
+        if (!riding || !Settings.ShowMotivation) return;
+        if (_lastMotivationAt is { } last && RideSeconds - last < Math.Max(1, Settings.MotivationMinutes) * 60) return;
+        _lastMotivationAt = RideSeconds;
+        Motivation = _motivationDeck.Next();
+        _motivationUntil = now + MotivationDuration;
     }
 
     private void UpdateLiveValues(DateTimeOffset now)
