@@ -22,6 +22,12 @@ public interface IPlatformServices
     void OpenFolder(string path);
 
     /// <summary>
+    /// While on, the screen stays lit and the PC doesn't go to sleep (a ride is in progress and the rider isn't
+    /// touching the mouse or keyboard). Call from the UI thread.
+    /// </summary>
+    void KeepAwake(bool on);
+
+    /// <summary>
     /// Called when the app is launched a second time (e.g. from the "BingeRide Overlay" shortcut while it's running):
     /// the running copy shows its overlay (true) or full window (false) instead of a second copy starting.
     /// </summary>
@@ -35,6 +41,7 @@ public sealed class DefaultPlatformServices : IPlatformServices
     public void KeepOnTop(Window window) { }
     public IDisposable? RegisterGlobalHotkeys(Action toggleCompact, Action toggleClickThrough) => null;
     public IDisposable? ListenForActivation(Action<bool> show) => null;
+    public void KeepAwake(bool on) { }
 
     public void OpenFolder(string path)
     {

@@ -59,7 +59,7 @@ public sealed class RideRecording
         var end = EndTime > StartTime ? EndTime : s.Count > 0 ? s[^1].Time : StartTime;
         var moving = TimerSeconds(end);
         var avgPower = s.Count > 0 ? s.Average(x => x.PowerW) : 0;
-        var np = NormalizedPower(s);
+        var np = NormalizedPower(s, 0, s.Count);
         var intensity = Ftp > 0 ? np / Ftp : 0;
         var pedalling = s.Where(x => x.CadenceRpm > 0).ToList();
         var withHr = s.Where(x => x.HeartRate is > 0).Select(x => x.HeartRate!.Value).ToList();
@@ -81,18 +81,22 @@ public sealed class RideRecording
             Ftp);
     }
 
-    /// <summary>4th-power mean of 30 s rolling averages (plain average for rides under 30 s).</summary>
-    private static double NormalizedPower(List<RideSample> s)
+    /// <summary>4th-power mean of 30 s rolling averages over <paramref name="count"/> samples (plain average under 30 s).</summary>
+    internal static double NormalizedPower(IReadOnlyList<RideSample> s, int from, int count)
     {
-        if (s.Count == 0) return 0;
-        if (s.Count < 30) return s.Average(x => x.PowerW);
+        if (count <= 0) return 0;
         double window = 0, sum4 = 0;
-        for (var i = 0; i < s.Count; i++)
+        if (count < 30)
         {
-            window += s[i].PowerW;
-            if (i >= 30) window -= s[i - 30].PowerW;
+            for (var i = from; i < from + count; i++) window += s[i].PowerW;
+            return window / count;
+        }
+        for (var i = 0; i < count; i++)
+        {
+            window += s[from + i].PowerW;
+            if (i >= 30) window -= s[from + i - 30].PowerW;
             if (i >= 29) sum4 += Math.Pow(window / 30, 4);
         }
-        return Math.Pow(sum4 / (s.Count - 29), 0.25);
+        return Math.Pow(sum4 / (count - 29), 0.25);
     }
 }

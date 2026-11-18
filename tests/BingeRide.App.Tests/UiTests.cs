@@ -4,6 +4,9 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.Input;
+using Avalonia.VisualTree;
+using BingeRide.App.Controls;
 using BingeRide.App.Services;
 using BingeRide.App.ViewModels;
 using BingeRide.App.Views;
@@ -36,11 +39,12 @@ public sealed class UiTests : IDisposable
         if (Directory.Exists(_folder)) Directory.Delete(_folder, true);
     }
 
-    private MainViewModel CreateVm()
+    private MainViewModel CreateVm(IPlatformServices? platform = null)
     {
         var settings = new AppSettings { Ftp = 140, WorkoutsFolder = _folder, RidesFolder = Path.Combine(_folder, "rides") };
-        var vm = new MainViewModel(new DefaultPlatformServices(), settings, Path.Combine(_folder, "settings.json"));
-        vm.Start(watchLibrary: false);
+        var vm = new MainViewModel(platform ?? new DefaultPlatformServices(), settings, Path.Combine(_folder, "settings.json"));
+        // No wall-clock ticks: they'd move a ride dated at T0 to "now" (e.g. expiring its motivation sentence).
+        vm.Start(watchLibrary: false, realClock: false);
         Dispatcher.UIThread.RunJobs(); // library refreshes are posted to the UI thread
         vm.UseTrainer(new SimulatedTrainer(autoRun: false));
         vm.Ride.Tick(T0); // the ride clock starts at the test's fake time
@@ -204,6 +208,124 @@ public sealed class UiTests : IDisposable
         var tabs = w.GetVisualDescendants().OfType<TabControl>().First();
         tabs.SelectedIndex = 2;
         Save(w, "main-rides.png");
+    }
+
+    /// <summary>Records keep-awake requests; everything else does nothing.</summary>
+    private sealed class AwakePlatform : IPlatformServices
+    {
+        public List<bool> KeepAwakeCalls { get; } = [];
+        public void KeepAwake(bool on) => KeepAwakeCalls.Add(on);
+        public Core.Ble.IBleAdapter? CreateBleAdapter() => null;
+        public void SetClickThrough(Window window, bool enabled) { }
+        public void KeepOnTop(Window window) { }
+        public IDisposable? RegisterGlobalHotkeys(Action toggleCompact, Action toggleClickThrough) => null;
+        public void OpenFolder(string path) { }
+        public IDisposable? ListenForActivation(Action<bool> show) => null;
+    }
+
+    [AvaloniaFact]
+    public async Task Screen_stays_awake_only_while_a_ride_is_active()
+    {
+        var platform = new AwakePlatform();
+        var vm = CreateVm(platform);
+        Ride(vm, T0, 30);
+        Assert.Empty(platform.KeepAwakeCalls); // just pedalling around: Windows may sleep as usual
+
+        vm.StartRideCommand.Execute(null);
+        Ride(vm, T0.AddSeconds(30), 30);
+        Assert.Equal([true], platform.KeepAwakeCalls);
+
+        vm.TogglePauseCommand.Execute(null);
+        vm.Refresh();
+        Assert.True(vm.IsRidePaused);
+        Assert.Equal([true], platform.KeepAwakeCalls); // a pause (drink, toilet) keeps the screen on
+
+        vm.TogglePauseCommand.Execute(null);
+        vm.FinishRideCommand.Execute(null);
+        Assert.Equal([true, false], platform.KeepAwakeCalls);
+
+        vm.StartRideCommand.Execute(null);
+        vm.Refresh();
+        await vm.DisposeAsync(); // closing the app mid-ride lets the PC sleep again
+        Assert.Equal([true, false, true, false], platform.KeepAwakeCalls);
+    }
+
+    [AvaloniaFact]
+    public void Ride_graphs_open_on_double_click_and_zoom()
+    {
+        var vm = CreateVm();
+        var vo2 = vm.Workouts.First(e => e.Name.StartsWith("VO2max"));
+        vm.StartRideCommand.Execute(null);
+        vm.StartWorkoutCommand.Execute(vo2);
+        Ride(vm, T0, 32 * 60); // warm-up, openers, settle and the first VO2 reps
+        vm.FinishRideCommand.Execute(null);
+        var entry = Assert.Single(vm.RideEntries);
+
+        var main = new MainWindow { DataContext = vm, Width = 1200, Height = 780 };
+        main.Show();
+        main.GetVisualDescendants().OfType<TabControl>().First().SelectedIndex = 2;
+        main.UpdateLayout();
+        var item = main.GetVisualDescendants().OfType<ListBoxItem>().Single(i => ReferenceEquals(i.DataContext, entry));
+        var at = item.TranslatePoint(new Point(40, 12), main)!.Value;
+        main.MouseDown(at, MouseButton.Left);
+        main.MouseUp(at, MouseButton.Left);
+        main.MouseDown(at, MouseButton.Left);
+        main.MouseUp(at, MouseButton.Left);
+
+        var window = Assert.Single(main.OwnedWindows.OfType<RideDetailWindow>());
+        var detail = (RideDetailViewModel)window.DataContext!;
+        for (var i = 0; i < 300 && !detail.HasTrack; i++)
+        {
+            Thread.Sleep(10);
+            Dispatcher.UIThread.RunJobs(); // the .fit file is read on a worker thread
+        }
+        Assert.True(detail.HasTrack, detail.Status);
+        Assert.InRange(detail.Seconds, 32 * 60, 32 * 60 + 1); // one sample per riding second
+        Assert.False(detail.IsZoomed);
+        Assert.StartsWith("Whole ride · 32:00 ·", detail.RangeText);
+        Assert.Contains(detail.Tiles, t => t.Label == "AVG HR");
+        window.Width = 1100;
+        window.Height = 740;
+        Save(window, "ride-detail.png");
+
+        // Drag across 10:00–20:00 of the chart to zoom into it.
+        var chart = window.GetVisualDescendants().OfType<RideChart>().Single();
+        var plotLeft = 44.0;
+        var plotWidth = chart.Bounds.Width - 44 - 14;
+        Point On(double second, double y = 60) => chart.TranslatePoint(new Point(plotLeft + second / detail.Seconds * plotWidth, y), window)!.Value;
+        window.MouseDown(On(600), MouseButton.Left);
+        window.MouseMove(On(900));
+        window.MouseMove(On(1200));
+        window.MouseUp(On(1200), MouseButton.Left);
+        Assert.True(detail.IsZoomed);
+        Assert.Equal(600, detail.ViewStart, 0);
+        Assert.Equal(1200, detail.ViewEnd, 0);
+        Assert.StartsWith("10:00 → 20:00 · 10:00 ·", detail.RangeText);
+
+        window.MouseMove(chart.TranslatePoint(new Point(plotLeft + plotWidth * 0.4, 120), window)!.Value);
+        Save(window, "ride-detail-zoomed.png");
+
+        detail.ScrollValue = 900; // the scroll bar keeps the zoomed length
+        Assert.Equal((900.0, 1500.0), (detail.ViewStart, detail.ViewEnd));
+        Assert.Equal((900.0, 1500.0), chart.View);
+
+        window.MouseDown(On(100), MouseButton.Left); // a double-click shows the whole ride again
+        window.MouseUp(On(100), MouseButton.Left);
+        window.MouseDown(On(100), MouseButton.Left);
+        window.MouseUp(On(100), MouseButton.Left);
+        Assert.False(detail.IsZoomed);
+        Assert.Equal((0.0, (double)detail.Seconds), chart.View);
+    }
+
+    [AvaloniaFact]
+    public void A_missing_ride_file_shows_a_message()
+    {
+        var summary = new RideSummary(T0, 600, 600, 5000, 90, 150, 300, 160, 0.8, 10, 85, null, null, "Gone", 200);
+        var detail = new RideDetailViewModel(new RideEntry(Path.Combine(_folder, "missing.fit"), summary));
+        detail.Load();
+        Assert.False(detail.HasTrack);
+        Assert.StartsWith("Couldn't read missing.fit", detail.Status);
+        Assert.DoesNotContain(detail.Tiles, t => t.Label == "AVG HR");
     }
 
     [AvaloniaFact]

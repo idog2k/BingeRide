@@ -89,7 +89,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OverlayFieldOptions = [];
         BuildOverlayFieldOptions();
 
-        _tick = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Normal, (_, _) => OnTick());
+        // Not the (interval, priority, callback) constructor: that one starts the timer at once, and Start() owns it.
+        _tick = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(250) };
+        _tick.Tick += (_, _) => OnTick();
         _saveSettings = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _saveSettings.Tick += (_, _) =>
         {
@@ -253,7 +255,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public int Gear => Ride.Gear;
 
     public bool IsRideIdle => !IsRideActive;
-    partial void OnIsRideActiveChanged(bool value) => OnPropertyChanged(nameof(IsRideIdle));
+    partial void OnIsRideActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsRideIdle));
+        // No screen blanking or sleep mid-ride: nobody touches the mouse while pedalling (paused rides too).
+        _platform.KeepAwake(value);
+    }
     partial void OnCueTextChanged(string? value) => OnPropertyChanged(nameof(HasCue));
     partial void OnNoticeChanged(string? value) => OnPropertyChanged(nameof(HasNotice));
     partial void OnActiveWorkoutChanged(Workout? value) => OnPropertyChanged(nameof(HasActiveWorkout));
@@ -271,7 +278,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Loads the library, starts Bluetooth and the 4 Hz ride loop.</summary>
-    public void Start(bool watchLibrary = true)
+    /// <param name="watchLibrary">Reload the library when files in the workouts folder change.</param>
+    /// <param name="realClock">Run the ride loop on the wall clock; tests turn it off and drive time themselves.</param>
+    public void Start(bool watchLibrary = true, bool realClock = true)
     {
         try
         {
@@ -322,7 +331,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshRides();
         SyncDevices();
         _ = StartRemoteIfEnabledAsync();
-        _tick.Start();
+        if (realClock) _tick.Start();
     }
 
     private void OnTick()
@@ -1067,6 +1076,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _tick.Stop();
         if (Ride.IsRideActive) Ride.FinishRide(); // closing the app never loses a ride
+        _platform.KeepAwake(false);
         if (_saveSettings.IsEnabled)
         {
             _saveSettings.Stop();

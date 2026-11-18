@@ -75,6 +75,19 @@ internal sealed class WindowsPlatformServices(bool bluetooth = true) : IPlatform
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
     }
 
+    // The request belongs to the calling thread and lasts until that thread clears it or exits; the UI thread
+    // lives as long as the app, and Windows drops the request when the process ends.
+    public void KeepAwake(bool on)
+    {
+        var state = on ? EsContinuous | EsSystemRequired | EsDisplayRequired : EsContinuous;
+        if (SetThreadExecutionState(state) == 0) BleTrace.Log($"keep awake {(on ? "on" : "off")} failed");
+    }
+
+    private const uint EsSystemRequired = 0x1, EsDisplayRequired = 0x2, EsContinuous = 0x80000000;
+
+    [DllImport("kernel32.dll")]
+    private static extern uint SetThreadExecutionState(uint esFlags);
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 

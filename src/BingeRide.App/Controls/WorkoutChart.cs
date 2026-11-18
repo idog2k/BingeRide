@@ -36,25 +36,24 @@ public sealed class WorkoutChart : Control
     private static readonly IPen CursorPen = new Pen(Brushes.White, 2);
     private static readonly IPen FtpLine = new Pen(new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)), 1, new DashStyle([4, 4], 0));
 
-    public static IBrush ZoneBrush(double pctFtp) => pctFtp switch
-    {
-        < 55 => Zone("#7D8597"),
-        < 76 => Zone("#3BA7FF"),
-        < 91 => Zone("#39D98A"),
-        < 106 => Zone("#FFD43B"),
-        < 121 => Zone("#FF8A3D"),
-        _ => Zone("#FF4D6A"),
-    };
+    /// <summary>Where each power zone ends, in % of FTP; the last zone has no top.</summary>
+    private static readonly double[] ZoneTops = [55, 76, 91, 106, 121];
 
-    private static readonly Dictionary<string, IBrush> ZoneCache = [];
-    private static IBrush Zone(string hex)
+    private static readonly IBrush[] ZoneBrushes =
+        [.. new[] { "#7D8597", "#3BA7FF", "#39D98A", "#FFD43B", "#FF8A3D", "#FF4D6A" }.Select(hex => new SolidColorBrush(Color.Parse(hex)))];
+
+    public static int ZoneCount => ZoneBrushes.Length;
+
+    /// <summary>0 (recovery) to <see cref="ZoneCount"/> − 1 (anaerobic).</summary>
+    public static int Zone(double pctFtp)
     {
-        lock (ZoneCache)
-        {
-            if (!ZoneCache.TryGetValue(hex, out var b)) ZoneCache[hex] = b = new SolidColorBrush(Color.Parse(hex));
-            return b;
-        }
+        var zone = 0;
+        while (zone < ZoneTops.Length && pctFtp >= ZoneTops[zone]) zone++;
+        return zone;
     }
+
+    public static IBrush ZoneBrush(double pctFtp) => ZoneBrushes[Zone(pctFtp)];
+    public static IBrush ZoneBrushOf(int zone) => ZoneBrushes[zone];
 
     public override void Render(DrawingContext context)
     {

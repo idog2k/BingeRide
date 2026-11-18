@@ -506,12 +506,13 @@
                   </StackPanel>
                 </Border>
                 <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                           Text="Each finished ride is saved as a .fit file. Upload it at strava.com/upload, Garmin Connect (Import data) or intervals.icu." />
+                           Text="Double-click a ride to explore its power, heart rate and cadence. Each finished ride is saved as a .fit file: upload it at strava.com/upload, Garmin Connect (Import data) or intervals.icu." />
               </StackPanel>
-              <ListBox Grid.Row="2" ItemsSource="{Binding RideEntries}" Background="Transparent">
+              <ListBox Grid.Row="2" x:Name="RidesList" ItemsSource="{Binding RideEntries}" Background="Transparent"
+                       DoubleTapped="OnRideDoubleTapped" KeyDown="OnRideKeyDown">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="svc:RideEntry">
-                    <StackPanel Spacing="1">
+                    <StackPanel Spacing="1" Background="Transparent" ToolTip.Tip="Double-click to see this ride's graphs">
                       <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                       <TextBlock Text="{Binding DateText}" FontSize="12" Classes="muted" />
                       <TextBlock Text="{Binding StatsText}" FontSize="12" TextWrapping="Wrap" />

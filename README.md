@@ -30,6 +30,8 @@ BingeRide was built for the **Wahoo KICKR CORE 2 with Zwift Cog**. It can also c
 - **Food burned 🍕:** ride energy turned into food (kcal ≈ kJ of work). Workouts show 🍎🍌🍪🍕🍔 on the chart where you'll burn each one. Free rides pop up "🍕 Slice of pizza burned!" as you go. Rides list them, the overlay can show them, and *Settings* turns it off.
 - **Motivation sentences 💪:** about 1000 short sentences, in random order. One appears when you start to pedal, then one every 5 minutes of riding. Each stays for 30 seconds, on the overlay and in the main window. *Settings* changes the interval or turns them off.
 - **Rides are recorded** in any mode: Start ride, then Finish. Each ride is saved as a `.fit` activity for Strava, Garmin Connect or intervals.icu.
+- **Ride graphs 📈:** double-click a ride in *Rides* to see its power, heart rate and cadence on one timeline. Point at the graph to read every value at that moment. Drag across a part to zoom in and get its averages. Double-click the graph to see the whole ride again.
+- **No sleep mid-ride:** while a ride is active, also when it is paused, the screen stays on and the PC does not go to sleep. After Finish, Windows uses your normal power settings again.
 
 Built with Avalonia 12 on .NET 10, using Bluetooth LE through WinRT. No Zwift account or app is needed.
 
